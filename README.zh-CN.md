@@ -23,7 +23,9 @@
 它在你的仓库里干活，再用语音汇报。演示里：打着游戏修好 Stripe 退款 bug、起草一封发送前要你过目的邮件，
 顺便学会塞拉斯的连招。
 
-<!-- VIDEO: 把 better-call-gpt-demo-readme.mp4 拖进 GitHub 编辑器，用生成的 user-attachments 链接替换这一行 -->
+
+https://github.com/user-attachments/assets/8a64b5aa-11a9-4f2e-9cbf-365d88c987a9
+
 <p align="center"><a href="https://pub-e5158abb37d74611a90c9a80bcd9fd9b.r2.dev/bettercallgpt/launch-video/2026-09-29/better-call-gpt-A-r8-16x9.mp4"><strong>▶ 观看 83 秒演示视频</strong></a></p>
 
 ## 一通电话怎么运作
