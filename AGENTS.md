@@ -9,13 +9,11 @@ Claude Code plugin, create the key file with empty values for the user to fill, 
 
 ## Working on this repository
 
-`voice/` and `tests/fixtures/` are synced byte-for-byte from upstream: do not edit them here
-(see [CONTRIBUTING.md](CONTRIBUTING.md)). Everything else — packaging, plugin, skill, docs — is
-edited here. The release tag in `plugin/commands/*.md` and `skills/bettercallgpt/SKILL.md`
+Everything is edited here (see [CONTRIBUTING.md](CONTRIBUTING.md)). The voice persona lives in
+`voice/prompts/`; a wording change also updates the golden prompts in `tests/fixtures/`. The release tag in `plugin/commands/*.md` and `skills/bettercallgpt/SKILL.md`
 (`@v<version>`) must match `pyproject.toml`; the tests check it.
 
 ```sh
 python -m unittest discover -s voice/tests -t . -p 'test_*.py'
 python -m unittest discover -s tests -t . -p 'test_*.py'
-python tools/sync_upstream.py check
 ```

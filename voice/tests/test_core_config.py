@@ -40,9 +40,9 @@ class EnvSnapshotTests(unittest.TestCase):
         self.assertEqual(config.cfg("VOICE_NAME"), "echo")
 
     def test_harness_control_names_are_refused_from_the_file(self):
-        path = self._write("AGENT_DRIVERS_DISABLE=claude\nVOICE_BUTLER_MODE=off\nOK=yes\n")
+        path = self._write("BETTERCALLGPT_ORCA_PANE=0\nVOICE_BUTLER_MODE=off\nOK=yes\n")
         config.load_env_file(path, force=True)
-        self.assertEqual(config.cfg("AGENT_DRIVERS_DISABLE"), "")
+        self.assertEqual(config.cfg("BETTERCALLGPT_ORCA_PANE"), "")
         self.assertEqual(config.cfg("VOICE_BUTLER_MODE"), "")
         self.assertEqual(config.cfg("OK"), "yes")
 

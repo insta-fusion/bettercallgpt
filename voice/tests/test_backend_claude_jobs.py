@@ -5,7 +5,7 @@ sequence running → running-with-events → terminal is exercised exactly, with
 also records the `wait_sec` it was handed, which is how the "the long-poll IS the wait" rule is
 checked rather than asserted in a comment.
 
-Steer-state meanings are the mesh's own (the agent-drivers mesh docs, docs/MESH.md §jobs); the mapping table test is the
+Steer-state meanings are the mesh's own (the job mesh's own docs, §jobs); the mapping table test is the
 guard against rounding `unconfirmed` up to success.
 """
 from __future__ import annotations

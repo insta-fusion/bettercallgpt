@@ -5,7 +5,7 @@ at once, `drive_job_status` LONG-POLLS (that poll is the only wait in this file 
 sleep, no deadline of ours), `drive_job_steer` writes a correction into the same running run, and
 `drive_job_stop` cancels it.
 
-Ground truth this adapter must not round up (the agent-drivers mesh docs, docs/MESH.md §jobs):
+Ground truth this adapter must not round up (the job mesh's own docs, §jobs):
   job states  `running` | `finished` | `failed` | `cancelled` — `finished` means the RUN ended,
               not that the task is done; the result text is what says which.
   steer states `delivered` / `received` = it reached the run → posted; `queued_next_turn` = it

@@ -117,7 +117,7 @@ def rollover_s() -> float:
     return 60.0 * float(voice_config.cfg(ROLLOVER_MINUTES_NAME, ROLLOVER_MINUTES_DEFAULT) or 0)
 
 STATUS_NAME = "status.json"
-DEFAULT_STATE_ROOT = "~/.local/state/agent-os/voice-listen"
+DEFAULT_STATE_ROOT = "~/.local/state/bettercallgpt"
 
 def state_dir(session_id: str) -> Path:
     root = os.environ.get("VOICE_LISTEN_STATE_DIR") or os.path.expanduser(DEFAULT_STATE_ROOT)

@@ -111,7 +111,7 @@ A backend observes one harness and actuates it; it decides no meaning.
   the voice model.
 - `process.py`: any CLI agent that takes a prompt and emits JSON lines (`codex exec --json` is
   the shipped dialect).
-- `claude_jobs.py`: the agent-drivers mesh's job tools.
+- `claude_jobs.py`: a job-mesh backend (maintainer-only; the mesh is not public).
 
 ## Acceptance
 

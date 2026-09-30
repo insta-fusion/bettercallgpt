@@ -1,8 +1,6 @@
 name: CI
 
-# voice/ is the upstream daemon, synced unchanged (UPSTREAM.json). CI proves three things:
-# the synced tree has not drifted, the upstream suite passes here, and the package installs
-# and answers. The LIVE voice path is never exercised in CI: it costs money and needs a mic.
+# CI proves two things: both test suites pass, and the package installs and answers. The LIVE voice path is never exercised in CI: it costs money and needs a mic.
 on:
   push:
     branches: [main]
@@ -18,16 +16,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  parity:
-    name: voice/ matches UPSTREAM.json
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: python tools/sync_upstream.py check
-
   test:
     name: test · ${{ matrix.os }} · py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -54,10 +42,10 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install portaudio
       - run: pip install .
-      - name: launcher + parity tests
+      - name: launcher tests
         run: python -m unittest discover -s tests -t . -p 'test_*.py' -v
-      - name: upstream voice/ suite (POSIX — the process backend sends SIGINT and the control
-          channel uses kqueue/add_reader; Windows support is upstream work in progress)
+      - name: voice/ suite (POSIX — the process backend sends SIGINT and the control
+          channel uses kqueue/add_reader; Windows support is work in progress)
         if: runner.os != 'Windows'
         # the one live smoke test is opt-in (VOICE_LIVE_TESTS=1), never set here
         run: python -m unittest discover -s voice/tests -t . -p 'test_*.py'

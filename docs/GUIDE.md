@@ -145,11 +145,10 @@ in [voice/DESIGN.md](../voice/DESIGN.md).
 ## Tests
 
 ```sh
-python -m unittest discover -s voice/tests -t . -p 'test_*.py'   # upstream suite, offline
+python -m unittest discover -s voice/tests -t . -p 'test_*.py'   # voice/ suite, offline
 python -m unittest discover -s tests -t . -p 'test_*.py'         # launcher + parity check
-python tools/sync_upstream.py check                               # voice/ == UPSTREAM.json
 ```
 
-The upstream suite is offline and silent, POSIX-only (the process backend sends SIGINT).
+The voice/ suite is offline and silent, POSIX-only (the process backend sends SIGINT).
 One live smoke test (a real `codex exec`) runs only when you opt in with `VOICE_LIVE_TESTS=1`.
 

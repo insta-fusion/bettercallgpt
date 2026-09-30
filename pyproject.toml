@@ -32,8 +32,7 @@ Repository = "https://github.com/insta-fusion/bettercallgpt"
 bettercallgpt = "bettercallgpt.cli:main"
 
 [tool.setuptools.packages.find]
-# voice/ is the upstream package, synced unchanged (UPSTREAM.json); its tests stay out
-# of the wheel.
+# voice/ is the daemon package; its tests stay out of the wheel.
 include = ["voice*", "bettercallgpt*"]
 exclude = ["voice.tests*"]
 

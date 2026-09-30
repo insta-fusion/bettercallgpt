@@ -3,7 +3,7 @@
 The voice daemon relays your speech into the session as a queued message. Your agent needs
 to know what that message is. Add this block to the instructions file your harness reads
 (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex and others). It is the same contract
-the daemon's upstream ships.
+the plugin's `/bettercallgpt:on` command carries.
 
 ```markdown
 ### A `⟨v#…⟩` line is the OPERATOR SPEAKING — always-on, no skill needed

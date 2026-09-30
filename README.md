@@ -55,7 +55,9 @@ sequenceDiagram
 
 1. **`/bettercallgpt:on`** starts a voice process bound to *this* session only. It proves which
    session started it with zero keystrokes and refuses anything else.
-2. **You talk, full duplex.** GPT Realtime decides what is chat and what is work.
+2. **You talk, full duplex, in your language.** It opens in Chinese and answers in whatever
+   language you just spoke; English tech words don't switch it. GPT Realtime decides what is chat
+   and what is work.
 3. **Work is relayed as your words**, tagged `⟨v#n⟩`, so Claude treats it as you speaking.
 4. **Results come back by voice** when they land; ask “how's it going?” mid-task.
 5. **It ends** when you say so, type `/bettercallgpt:off`, or stay quiet for 10 minutes.

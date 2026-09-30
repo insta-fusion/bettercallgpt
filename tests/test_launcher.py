@@ -37,7 +37,7 @@ class LocationTests(unittest.TestCase):
             env = {}
             with mock.patch.object(cli, "bundle_env", return_value=Path(d) / ".env"):
                 cli.apply_defaults(env, "darwin")
-        self.assertNotIn(cli.ENV_FILE_NAME, env)       # upstream's own lookup applies
+        self.assertNotIn(cli.ENV_FILE_NAME, env)       # the daemon's own lookup applies
         self.assertIn(cli.STATE_DIR_NAME, env)
 
     def test_windows_locations(self):
@@ -112,7 +112,7 @@ class DoctorTests(unittest.TestCase):
         self.assertFalse(self._doctor(self.CREDS, sd=self._fake_sd(inputs=0))["ready"])
 
     def test_process_child_is_resolved_like_the_backend_will(self):
-        # The registry's own dialect check is upstream-tested; here only the resolution
+        # The registry's own dialect check is tested in voice/tests; here only the resolution
         # bettercallgpt adds on top of it.
         from voice.backend import registry as backends
         patcher = mock.patch.object(backends, "require", return_value=None)
@@ -225,16 +225,6 @@ class StatuslineTests(unittest.TestCase):
              mock.patch.object(sys, "stdin", io.StringIO("{}")), redirect_stdout(out):
             self.assertEqual(cli.main(["statusline"]), 0)
         self.assertEqual(out.getvalue(), "")
-
-
-class ParityTests(unittest.TestCase):
-    def test_voice_matches_upstream_manifest(self):
-        import subprocess
-        root = Path(__file__).resolve().parent.parent
-        r = subprocess.run([sys.executable, str(root / "tools" / "sync_upstream.py"), "check"],
-                           capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
-
 
 
 class PluginTests(unittest.TestCase):
@@ -426,7 +416,7 @@ class OrcaPaneTests(unittest.TestCase):
             self.assertFalse(cli.pane_proves(parsed, "term_abc123"))
 
     def test_the_pre_proof_runs_the_real_proof_end_to_end(self):
-        # Real prove_ownership and Pane.bind over a faked `orca terminal read`: an upstream
+        # Real prove_ownership and Pane.bind over a faked `orca terminal read`: a
         # rename would fail here instead of silently turning pane mode off.
         from voice.app import daemon
         parsed = daemon.build_parser().parse_args(self.START)

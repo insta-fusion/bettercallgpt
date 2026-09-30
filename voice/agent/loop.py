@@ -1,6 +1,6 @@
 """The agent loop — the ONE place events become actions.
 
-Everything upstream describes; this decides and acts. It is the only async file in the core
+Everything the modules before it describe; this decides and acts. It is the only async file in the core
 because it is the only one that talks to anything: the live session, the backend, the audio sink,
 the ledger. It holds no policy of its own — the conversation log says what is true, the broker
 says whether consent was given, and the loop turns those answers into calls.

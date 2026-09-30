@@ -1,6 +1,4 @@
-# The daemon and its fixtures change only through a maintainer sync from upstream.
+# The voice daemon and its recorded fixtures need a maintainer's review.
 /voice/            @storyarcade
 /tests/fixtures/   @storyarcade
-/UPSTREAM.json     @storyarcade
-/tools/sync_upstream.py @storyarcade
 /.github/          @storyarcade

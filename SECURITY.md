@@ -4,8 +4,7 @@
 
 Use **GitHub private vulnerability reporting** (Security tab → "Report a vulnerability") on
 this repository. Do not open a public issue for anything exploitable. You'll get an
-acknowledgment within a week. The daemon code (`voice/`) is kept in sync with the
-maintainers' upstream repository; confirmed issues are fixed there and synced here.
+acknowledgment within a week.
 
 ## What this project considers a vulnerability
 
@@ -25,7 +24,7 @@ maintainers' upstream repository; confirmed issues are fixed there and synced he
   deliver speech into another session, or to keep delivering after the owner is gone, is a
   vulnerability.
 - **A `.env` re-wiring the host.** The `.env` may carry secrets and endpoints, never
-  harness-control names (`AGENT_DRIVERS_*`, `VOICE_BUTLER_*` are refused from the file).
+  harness-control names (`BETTERCALLGPT_*`, `VOICE_BUTLER_*` are refused from the file).
 
 ## Out of scope
 
@@ -33,7 +32,7 @@ maintainers' upstream repository; confirmed issues are fixed there and synced he
 - The voice model mishearing you (the agent is told `⟨v#…⟩` lines are ASR and to ask when a
   load-bearing word is unclear).
 
-## Known limitations (tracked, fixed upstream then synced)
+## Known limitations (tracked)
 
 - **The `⟨v#…⟩` tag is a convention, not authentication.** Any local process that can write to
   your session's messaging socket can send a line that ends in one. That is why the tag grants
@@ -58,5 +57,4 @@ maintainers' upstream repository; confirmed issues are fixed there and synced he
   the text the voice model needs to talk about the work: what you type into the session,
   the agent's progress and results, and permission prompts (so it can tell you one is
   waiting). Treat the provider as seeing what your terminal shows.
-- The test fixtures are recorded wire sessions with personal paths scrubbed on sync
-  (`tools/sync_upstream.py`, `FIXTURE_SCRUBS`).
+- The test fixtures are recorded wire sessions with personal paths removed.

@@ -2,27 +2,22 @@
 
 ## Where code changes go
 
-`voice/` is **kept in sync with the maintainers' upstream repository**: its files are
-byte-identical to the commit pinned in `UPSTREAM.json`; `tests/fixtures/` are the same files
-after the declared scrubs in `tools/sync_upstream.py`. CI checks the tree against that
-manifest (integrity, not provenance — a pin update must come from a maintainer's sync, which
-CODEOWNERS enforces once branch protection requires code-owner review). Pull requests that touch `voice/` are welcome here: open them as usual; a
-maintainer lands the change upstream and re-syncs, and your PR is closed with a link to the
-synced commit (credit kept). Maintainers sync with:
+Everything lives in this repository and takes pull requests directly:
 
-```sh
-python tools/sync_upstream.py sync --from /path/to/upstream --commit <sha>
-python tools/sync_upstream.py check
-```
+- `voice/` — the voice daemon (audio, the voice-model wire, the relay into your agent session)
+  and its prompts in `voice/prompts/`. Changes here need a maintainer's review (CODEOWNERS).
+- `bettercallgpt/` — the launcher, `plugin/` and `skills/` — the Claude Code plugin and setup skill.
+- `tests/fixtures/` — recorded wire sessions the `voice/` suite replays; they carry no personal
+  paths.
 
-Everything else — `bettercallgpt/` (the launcher), `tests/test_launcher.py`, docs, packaging
-and CI — lives here and takes pull requests directly.
+Changing a prompt's wording? Update the golden prompts in `tests/fixtures/voice-prompt-monolith-*.md`
+in the same pull request; `voice/tests/test_prompts.py` compares against them.
 
 ## Running the tests
 
 ```sh
-python -m unittest discover -s voice/tests -t . -p 'test_*.py'   # upstream suite (POSIX)
-python -m unittest discover -s tests -t . -p 'test_*.py'         # launcher + parity
+python -m unittest discover -s voice/tests -t . -p 'test_*.py'   # voice/ suite (POSIX)
+python -m unittest discover -s tests -t . -p 'test_*.py'         # launcher
 ```
 
 Both are offline and silent. One live smoke test (a real `codex exec`) runs only with

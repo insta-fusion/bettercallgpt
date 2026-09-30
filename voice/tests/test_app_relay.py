@@ -751,7 +751,7 @@ class TheDefaults(unittest.TestCase):
 SEGMENT = REPO / "host/hooks/voice-statusline-segment.sh"
 
 
-# The hook ships with the agent-drivers bundle, not with `voice/` (a downstream that syncs only
+# The hook ships with a separate bundle, not with `voice/` (a package that ships only
 # `voice/` has its own statusline and its own test for it).
 @unittest.skipUnless(shutil.which("jq") and shutil.which("bash") and SEGMENT.exists(),
                      "needs bash, jq and the bundle's statusline hook")

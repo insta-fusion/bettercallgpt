@@ -1,9 +1,8 @@
 """Configuration: the environment snapshot every voice component reads, and redaction.
 
 Two jobs and nothing else. (1) `.env` beside the bundle is read ONCE into a snapshot that never
-shadows the real environment — the same secrets-only contract `agent_drivers.py` and
-`gemini_native.py` use: `.env` may carry secrets and endpoint config, never policy or safety
-gates, and harness-control names (`AGENT_DRIVERS_*`, `VOICE_BUTLER_*`) are refused from the file
+shadows the real environment — a secrets-only contract: `.env` may carry secrets and endpoint config, never policy or safety
+gates, and harness-control names (`BETTERCALLGPT_*`, `VOICE_BUTLER_*`) are refused from the file
 so a checked-out file can never re-wire a host. (2) Anything derived from a key name is redacted
 before it can reach a log, a transcript or a prompt.
 
@@ -23,7 +22,7 @@ _ENV_FILE: dict[str, str] = {}
 _LOADED = False
 
 # Prefixes the file may not set: these steer the harness itself, not a provider.
-_REFUSED_PREFIXES = ("AGENT_DRIVERS_", "VOICE_BUTLER_")
+_REFUSED_PREFIXES = ("BETTERCALLGPT_", "VOICE_BUTLER_")
 
 # Names whose VALUE is a secret. Anything matching is redacted wherever it would be printed.
 _SECRET_MARKERS = ("KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL")
@@ -32,9 +31,9 @@ _REDACTED = "<redacted>"
 
 
 def env_file_path() -> Path:
-    """Where the snapshot is read from. `AGENT_DRIVERS_ENV_FILE` wins; otherwise the bundle root
+    """Where the snapshot is read from. `BETTERCALLGPT_ENV_FILE` wins; otherwise the bundle root
     (this file's parent's parent), so a checkout and a deploy each read their own."""
-    override = os.environ.get("AGENT_DRIVERS_ENV_FILE")
+    override = os.environ.get("BETTERCALLGPT_ENV_FILE")
     if override:
         return Path(override)
     return Path(__file__).resolve().parent.parent / ".env"

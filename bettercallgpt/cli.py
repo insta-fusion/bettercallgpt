@@ -1,13 +1,11 @@
 """`bettercallgpt` — the installed entry point to the voice daemon.
 
-The daemon itself is `voice/` from upstream, shipped unchanged (see UPSTREAM.json and
-tools/sync_upstream.py). This launcher adds what an installed package needs and a source
+The daemon itself is `voice/`. This launcher adds what an installed package needs and a source
 checkout does not:
 
-1. Where config and state live. Upstream reads `.env` beside the bundle and keeps state
-   under ~/.local/state/agent-os; an installed package sits in site-packages, where nobody
-   keeps a `.env`. Unless the operator already set them, this sets
-     AGENT_DRIVERS_ENV_FILE  -> ~/.config/bettercallgpt/.env   (%APPDATA%\\bettercallgpt\\.env on Windows)
+1. Where config and state live. The daemon reads `.env` beside the bundle; an installed package sits in
+   site-packages, where nobody keeps a `.env`. Unless the operator already set them, this sets
+     BETTERCALLGPT_ENV_FILE  -> ~/.config/bettercallgpt/.env   (%APPDATA%\\bettercallgpt\\.env on Windows)
      VOICE_LISTEN_STATE_DIR  -> ~/.local/state/bettercallgpt   (%LOCALAPPDATA%\\bettercallgpt on Windows)
    A source checkout that has its own `.env` keeps using it.
 2. `doctor` — a no-session preflight: the daemon's own provider/backend/platform rules,
@@ -39,7 +37,7 @@ import sys
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-ENV_FILE_NAME = "AGENT_DRIVERS_ENV_FILE"
+ENV_FILE_NAME = "BETTERCALLGPT_ENV_FILE"
 STATE_DIR_NAME = "VOICE_LISTEN_STATE_DIR"
 APP = "bettercallgpt"
 SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
@@ -64,7 +62,7 @@ def user_state_dir(environ=os.environ, platform: str = sys.platform) -> Path:
 
 
 def bundle_env() -> Path:
-    """The `.env` upstream reads by default: beside the `voice/` package."""
+    """The `.env` the daemon reads by default: beside the `voice/` package."""
     spec = importlib.util.find_spec("voice")
     root = Path(spec.origin).resolve().parent.parent if spec and spec.origin else Path.cwd()
     return root / ".env"
@@ -238,7 +236,7 @@ def with_orca_pane(args: list[str], environ=os.environ, which=None, prove=None) 
 
 
 def statusline(stdin, environ=os.environ, alive=None) -> str:
-    """The segment text, or "" — the same rule as upstream's statusline segment: the call is
+    """The segment text, or "" — the same rule as the daemon's statusline segment: the call is
     running, its relay is qualified, it has not ended, and its process is still there."""
     try:
         if stdin.isatty():                            # run by hand: nothing to read
