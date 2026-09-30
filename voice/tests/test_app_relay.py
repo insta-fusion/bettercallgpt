@@ -379,6 +379,9 @@ class ADropReconnectsAndSeedsTheRecap(RelayHarness):
         self.assertNotIn("sk-relay-test-secret-value", json.dumps(second.sent))
         # The status said so while it happened, and the phase never left `running`.
         self.assertIn({"reconnecting": True}, self.daemon.status.history)
+        # Synchronise on the relay's own end: the swap bumps relay_count, then still awaits the
+        # mic hand-over before the outer finally clears `reconnecting` (a slow runner lands between).
+        await _until(lambda: not self.daemon.status.data["reconnecting"])
         self.assertFalse(self.daemon.status.data["reconnecting"])
         self.assertEqual(self.daemon.status.data["phase"], "running")
         phases = [h["phase"] for h in self.daemon.status.history if "phase" in h]

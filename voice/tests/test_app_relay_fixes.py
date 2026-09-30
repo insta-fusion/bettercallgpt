@@ -38,6 +38,10 @@ class ADropDuringARolloverDoesNotDeadlock(RelayHarness):
         self.assertEqual(self.daemon.session.generation, 0, "still waiting for quiet")
         first.drop()
         await _until(lambda: self.daemon.status.data["relay_count"] == 1, bound=2.0)
+        # Synchronise on the relay's own end: the swap bumps relay_count, then still awaits the
+        # mic hand-over before the outer finally releases the backend and clears `reconnecting`
+        # (a slow runner lands between the two).
+        await _until(lambda: not self.daemon.status.data["reconnecting"])
         self.assertIs(self.daemon.session, self.daemon.loop.session)
         self.assertEqual(self.connect.attempts, 2, "no redundant third session")
         self.assertTrue(self.daemon.loop._voice_ready.is_set(), "the backend is released")
