@@ -71,11 +71,11 @@ bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户�
 | | Voice Live（默认） | GPT-Live |
 |---|---|---|
 | 模型 | `gpt-realtime-2.1` | `gpt-live-1` |
-| 外放 | **可以。** 服务端会从麦克风里减掉它自己的声音，不会听到自己。 | **要戴耳机。** 外放时麦克风会录到 AI 自己的声音，它以为你在插话，话说一半就停了。 |
+| 回声 | 服务端会从麦克风里减掉它自己的声音（服务端回声消除），外放没问题。 | 官方没有标明回声消除，所以启动时会提示“建议戴耳机”。外放未做专门测试：我们自己用它通话时没有出现自己打断自己。 |
 | `~/.config/bettercallgpt/.env` 里填 | `AZURE_OPENAI_ENDPOINT`、`AZURE_OPENAI_API_KEY` | `VOICE_LIVE_PROVIDER=gpt_live`、`VOICE_GPT_LIVE_ENDPOINT`、`VOICE_GPT_LIVE_API_KEY`（它自己的 Azure 资源） |
 
-如果 AI 老是自己打断自己，说明你在用 GPT-Live 而且开着外放：戴上耳机，或者删掉
-`VOICE_LIVE_PROVIDER=gpt_live` 这一行，换回 Voice Live。
+如果开着外放时 AI 偶尔话说一半自己停下，戴上耳机，或者换回 Voice Live
+（删掉 `VOICE_LIVE_PROVIDER=gpt_live` 这一行）。
 
 ## 命令
 

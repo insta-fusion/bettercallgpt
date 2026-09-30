@@ -88,11 +88,11 @@ Or pin the release without the skill: `uv tool install "git+https://github.com/i
 | | Voice Live (default) | GPT-Live |
 |---|---|---|
 | Model | `gpt-realtime-2.1` | `gpt-live-1` |
-| Speakers | **Yes.** The service removes its own voice from your mic, so it never hears itself. | **Use headphones.** On speakers the mic picks up the AI's own voice, it thinks you cut in, and it stops mid-sentence. |
+| Echo | The service removes its own voice from your mic (server echo cancellation), so open speakers are fine. | Echo cancellation is not advertised, so the call's start notes “use headphones”. On open speakers it is untested: our own calls on it did not cut themselves off. |
 | Keys in `~/.config/bettercallgpt/.env` | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | `VOICE_LIVE_PROVIDER=gpt_live`, `VOICE_GPT_LIVE_ENDPOINT`, `VOICE_GPT_LIVE_API_KEY` (its own Azure resource) |
 
-If the AI keeps interrupting itself, you are on GPT-Live with speakers: put on headphones, or
-delete the `VOICE_LIVE_PROVIDER=gpt_live` line to go back to Voice Live.
+If the AI ever cuts itself off mid-sentence while on speakers, put on headphones or switch to
+Voice Live (delete the `VOICE_LIVE_PROVIDER=gpt_live` line).
 
 ## Commands
 
