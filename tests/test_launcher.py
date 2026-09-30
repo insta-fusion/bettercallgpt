@@ -323,7 +323,8 @@ class ReleasePinTests(unittest.TestCase):
         import tomllib
         version = tomllib.loads((self.ROOT / "pyproject.toml").read_text())["project"]["version"]
         files = [*sorted((self.ROOT / "plugin" / "commands").glob("*.md")),
-                 self.ROOT / "skills" / "bettercallgpt" / "SKILL.md", self.ROOT / "README.md"]
+                 self.ROOT / "skills" / "bettercallgpt" / "SKILL.md", self.ROOT / "README.md",
+                 self.ROOT / "docs" / "GUIDE.md"]
         for f in files:
             pins = set(re.findall(r"insta-fusion/bettercallgpt@v([0-9][^ \s`\"]*)", f.read_text()))
             self.assertEqual(pins, {version}, f.name)

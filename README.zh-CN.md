@@ -1,25 +1,52 @@
 <p align="center">
-  <a href="https://pub-e5158abb37d74611a90c9a80bcd9fd9b.r2.dev/bettercallgpt/launch-video/2026-09-29/better-call-gpt-A-r8-16x9.mp4"><img alt="Better Call GPT：给 Claude Code 打个语音电话。点击观看 83 秒演示视频。" src="docs/assets/cover.jpg" width="860"></a>
+  <a href="https://pub-e5158abb37d74611a90c9a80bcd9fd9b.r2.dev/bettercallgpt/launch-video/2026-09-29/better-call-gpt-A-r8-16x9.mp4"><img alt="Better Call GPT：给 Claude Code 打个语音电话" src="docs/assets/cover.jpg" width="860"></a>
 </p>
 
-<h1 align="center">Better Call GPT</h1>
-<p align="center"><strong>给 Claude Code 打个语音电话。</strong>它写代码的时候你直接说，GPT Realtime 会回你。<br>全双工，随时能打断；口头说“同意”批准不了任何操作。</p>
+<h3 align="center">给 Claude Code 打个语音电话</h3>
+<p align="center">它写代码，你直接说；GPT Realtime 会回你。口头说“同意”批准不了任何操作。</p>
 
 <p align="center">
+  <a href="https://pub-e5158abb37d74611a90c9a80bcd9fd9b.r2.dev/bettercallgpt/launch-video/2026-09-29/better-call-gpt-A-r8-16x9.mp4"><strong>演示</strong></a>
+  &nbsp;&bull;&nbsp;
   <a href="#一次安装"><strong>安装</strong></a>
   &nbsp;&bull;&nbsp;
-  <a href="#通话是什么样的"><strong>怎么用</strong></a>
+  <a href="#一通电话怎么运作"><strong>原理</strong></a>
   &nbsp;&bull;&nbsp;
-  <a href="#安全设计"><strong>安全</strong></a>
+  <a href="docs/GUIDE.md"><strong>指南</strong></a>
   &nbsp;&bull;&nbsp;
   <a href="./README.md"><strong>English</strong></a>
 </p>
 
+## Better Call GPT
+
+你手上做着别的事，嘴上说想要什么就行。实时语音模型负责聊天；只有真正的请求才会进你的 Claude Code 会话，
+它在你的仓库里干活，再用语音汇报。演示里：打着游戏修好 Stripe 退款 bug、起草一封发送前要你过目的邮件，
+顺便学会塞拉斯的连招。
+
+<!-- VIDEO: 把 better-call-gpt-demo-readme.mp4 拖进 GitHub 编辑器，用生成的 user-attachments 链接替换这一行 -->
 <p align="center"><a href="https://pub-e5158abb37d74611a90c9a80bcd9fd9b.r2.dev/bettercallgpt/launch-video/2026-09-29/better-call-gpt-A-r8-16x9.mp4"><strong>▶ 观看 83 秒演示视频</strong></a></p>
 
-<p align="center">
-  <img alt="你对 GPT Realtime 说话，它把真正的请求转给你的 Claude Code 会话，再把结果读给你听" src="docs/assets/how-it-works.svg" width="860">
-</p>
+## 一通电话怎么运作
+
+```mermaid
+sequenceDiagram
+    participant You as 你
+    participant GPT as GPT Realtime
+    participant CC as Claude Code（你的会话）
+    You->>GPT: 说：“把退款 bug 修了然后上线”
+    GPT-->>You: 闲聊就地回答
+    GPT->>CC: 真正的请求以带 ⟨v#1⟩ 标记的一行进入会话
+    CC->>CC: 读代码、改代码、跑测试、推送
+    CC-->>GPT: 进度和结果
+    GPT-->>You: 读给你听，随时可以打断
+    Note over You,CC: 权限确认只在你的键盘上回答，语音批准不了。
+```
+
+1. **`/bettercallgpt:on`** 启动一个只绑定*当前*会话的语音进程：无需按键就能证明是哪个会话启动了它，其他一律拒绝。
+2. **你说话，全双工。** 由 GPT Realtime 判断哪些是闲聊、哪些是活。
+3. **活以你的原话转进会话**，带 `⟨v#n⟩` 标记，Claude 会把它当作你在说话。
+4. **结果出来就用语音告诉你**；干到一半可以问“进度怎么样？”
+5. **结束**：说一声“好了”、输入 `/bettercallgpt:off`，或者安静 10 分钟。
 
 ## 一次安装
 
@@ -37,12 +64,7 @@ bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户�
 `/plugin marketplace add insta-fusion/bettercallgpt` 和 `/plugin install bettercallgpt@bettercallgpt`，
 照着 [`.env.example`](.env.example) 填好 `~/.config/bettercallgpt/.env`，再 `/bettercallgpt:on`。
 
-## 通话是什么样的
-
-- **你说，它干活。** 边想边说就行；你的话会以带 `⟨v#…⟩` 标记的一行进入会话，结果出来时读给你听。
-- **随时打断。** 全双工，能插话：不用按住说话，也不用对讲机式轮流。干到一半可以问“进度怎么样？”
-- **闲聊留在语音里。** 只有真正的请求才会交给 AI。
-- **会自己结束。** 说一声“好了”、输入 `/bettercallgpt:off`，或者安静 10 分钟（AI 还在干活时不会挂）。下降的提示音表示结束。
+## 命令
 
 | 命令 | 作用 |
 |---|---|
@@ -67,4 +89,10 @@ bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户�
 | 系统 | **macOS** | Linux / Windows：Claude Code 后端的进程归属校验目前只支持 macOS |
 | Orca | 在任意 [Orca](https://github.com/stablyai/orca) 窗格里都能用；窗格能证明归属时（需要 `orca` 命令），Claude 等你批准时语音会提醒你 | 这种模式下的长通话：未验证 |
 
-配置项、手动启动、架构和测试见 [English README](README.md#configuration)。
+## 更多
+
+状态栏、不装插件怎么用、配置项、架构和测试见 [docs/GUIDE.md](docs/GUIDE.md)（英文）。
+
+## 许可证
+
+MIT，见 [LICENSE](LICENSE)。
