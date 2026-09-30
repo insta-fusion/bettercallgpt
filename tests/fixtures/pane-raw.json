@@ -1,0 +1,52 @@
+{
+  "id": "00000000-0000-4000-8000-000000000003",
+  "ok": true,
+  "result": {
+    "terminal": {
+      "handle": "term_00000000-0000-4000-8000-000000000001",
+      "status": "running",
+      "tail": [
+        "⏺ Plan agreed: add the retry wrapper, then run the integration tests before touching the client. Starting",
+        "  with the wrapper now.",
+        "  Ran 1 shell command",
+        "⏺ Wrapper added. Running the integration tests next, and capturing the output the fixture needs.",
+        "  Ran 1 shell command",
+        "⏺ While the tests run, I'll check the worktree state and the branch.",
+        "  Ran 1 shell command",
+        "⏺ The worktree is clean and on feature/retry-wrapper. I'll rebase it onto main and continue here.",
+        "  Rebased onto origin/main",
+        "⏺ Worktree is on main with the new wrapper. Now capturing the pane fixture — starting with the",
+        "  binding probe.",
+        "  Ran 1 shell command",
+        "⏺ Zero hits — the pane text is truncated. Let me check what the pane shows for a running command.",
+        "  Ran 1 shell command",
+        "⏺ The binding probe works — the nonce appears when it is early in the command. The earlier miss buried it",
+        "  past the truncation point.",
+        "  Ran 1 shell command",
+        "⏺ The nonce was generated after the pane snapshot, so it could not appear. Run the probe the way the real",
+        "  binding works: nonce first, then read.",
+        "⏺ Running 1 shell command…",
+        "  ⎿  $ VLBIND=vlbind-7c2e91a4; F=/tmp/voice-fixtures; orca terminal read --terminal",
+        "     \"$ORCA_TERMINAL_HANDLE\" --limit 40 --json 2>/dev/null > $F/pane-raw.json; python3 - \"$F/pane-raw.json\" vlbind-7c2e91a4 <<'EOF' |",
+        "     tee $F/binding-probe.txt",
+        "     import json,sys…",
+        "✢ Whirring… (3m 47s · ↓ 12.2k tokens)",
+        "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+        "❯",
+        "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+        "  ~/work/example-project (feature/retry-wrapper)  Claude  ctx:120k/1.0M 12% [█▎░░░░░░░░░]  $…",
+        "  ⏵⏵ auto mode on · 1 shell · ← for agents",
+        "                                                                                                                                 /rc"
+      ],
+      "truncated": false,
+      "limited": false,
+      "oldestCursor": "0",
+      "nextCursor": "1",
+      "latestCursor": "1",
+      "returnedLineCount": 31
+    }
+  },
+  "_meta": {
+    "runtimeId": "00000000-0000-4000-8000-000000000002"
+  }
+}

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bettercallgpt"
+version = "0.1.0"
+description = "Talk to your coding agent: an always-on, full-duplex voice daemon that relays what you say into the agent session and reads its results aloud."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+readme = "README.md"
+keywords = ["voice", "agents", "realtime", "speech", "claude-code", "full-duplex"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    # The daemon speaks the realtime wire over a raw websocket (additional_headers= needs
+    # the asyncio client of websockets >= 14) and plays/records raw PCM through PortAudio.
+    "websockets>=14,<18",
+    "sounddevice>=0.5.6,<0.6",   # 0.5.6 wheels bundle PortAudio on macOS and Windows
+]
+
+[project.urls]
+Repository = "https://github.com/insta-fusion/bettercallgpt"
+
+[project.scripts]
+bettercallgpt = "bettercallgpt.cli:main"
+
+[tool.setuptools.packages.find]
+# voice/ is the upstream package, synced unchanged (UPSTREAM.json); its tests stay out
+# of the wheel.
+include = ["voice*", "bettercallgpt*"]
+exclude = ["voice.tests*"]
+
+[tool.setuptools.package-data]
+voice = ["prompts/*.md", "prompts/*/*.md"]
