@@ -30,8 +30,11 @@ only real requests reach your Claude Code session, which does the work in your r
 back by voice. In the demo: fix a Stripe refund bug, draft an email you approve before it sends,
 and learn a Sylas combo, all mid-game.
 
-<!-- VIDEO: replace this line with the github.com/user-attachments URL of
-     better-call-gpt-demo-readme.mp4 (drag the file into GitHub's editor here). -->
+
+
+https://github.com/user-attachments/assets/8a64b5aa-11a9-4f2e-9cbf-365d88c987a9
+
+
 <p align="center"><a href="https://pub-e5158abb37d74611a90c9a80bcd9fd9b.r2.dev/bettercallgpt/launch-video/2026-09-29/better-call-gpt-A-r8-16x9.mp4"><strong>▶ Watch the 83-second demo</strong></a></p>
 
 ## How a call works
