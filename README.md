@@ -83,6 +83,17 @@ and `/plugin install bettercallgpt@bettercallgpt`, fill `~/.config/bettercallgpt
 
 Or pin the release without the skill: `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.1.0"`.
 
+## Speakers or headphones? Pick the voice model
+
+| | Voice Live (default) | GPT-Live |
+|---|---|---|
+| Model | `gpt-realtime-2.1` | `gpt-live-1` |
+| Speakers | **Yes.** The service removes its own voice from your mic, so it never hears itself. | **Use headphones.** On speakers the mic picks up the AI's own voice, it thinks you cut in, and it stops mid-sentence. |
+| Keys in `~/.config/bettercallgpt/.env` | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | `VOICE_LIVE_PROVIDER=gpt_live`, `VOICE_GPT_LIVE_ENDPOINT`, `VOICE_GPT_LIVE_API_KEY` (its own Azure resource) |
+
+If the AI keeps interrupting itself, you are on GPT-Live with speakers: put on headphones, or
+delete the `VOICE_LIVE_PROVIDER=gpt_live` line to go back to Voice Live.
+
 ## Commands
 
 | Command | Does |

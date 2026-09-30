@@ -66,6 +66,17 @@ bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户�
 `/plugin marketplace add insta-fusion/bettercallgpt` 和 `/plugin install bettercallgpt@bettercallgpt`，
 照着 [`.env.example`](.env.example) 填好 `~/.config/bettercallgpt/.env`，再 `/bettercallgpt:on`。
 
+## 外放还是耳机？选语音模型
+
+| | Voice Live（默认） | GPT-Live |
+|---|---|---|
+| 模型 | `gpt-realtime-2.1` | `gpt-live-1` |
+| 外放 | **可以。** 服务端会从麦克风里减掉它自己的声音，不会听到自己。 | **要戴耳机。** 外放时麦克风会录到 AI 自己的声音，它以为你在插话，话说一半就停了。 |
+| `~/.config/bettercallgpt/.env` 里填 | `AZURE_OPENAI_ENDPOINT`、`AZURE_OPENAI_API_KEY` | `VOICE_LIVE_PROVIDER=gpt_live`、`VOICE_GPT_LIVE_ENDPOINT`、`VOICE_GPT_LIVE_API_KEY`（它自己的 Azure 资源） |
+
+如果 AI 老是自己打断自己，说明你在用 GPT-Live 而且开着外放：戴上耳机，或者删掉
+`VOICE_LIVE_PROVIDER=gpt_live` 这一行，换回 Voice Live。
+
 ## 命令
 
 | 命令 | 作用 |
