@@ -1,0 +1,74 @@
+name: CI
+
+# CI proves two things: both test suites pass, and the package installs and answers. The LIVE voice path is never exercised in CI: it costs money and needs a mic.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', 'LICENSE']
+  pull_request:
+    paths-ignore: ['docs/**', 'LICENSE']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    name: test · ${{ matrix.os }} · py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults: { run: { shell: bash } }
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.12", "3.13"]
+        exclude:              # macOS/Windows bill at a multiple; newest python covers them
+          - { os: macos-latest, python: "3.12" }
+          - { os: windows-latest, python: "3.12" }
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - name: PortAudio (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+      - name: PortAudio (macOS)
+        if: runner.os == 'macOS'
+        run: brew install portaudio
+      - run: pip install .
+      - name: launcher tests
+        run: python -m unittest discover -s tests -t . -p 'test_*.py' -v
+      - name: voice/ suite (POSIX — the process backend sends SIGINT and the control
+          channel uses kqueue/add_reader; Windows support is work in progress)
+        if: runner.os != 'Windows'
+        # the one live smoke test is opt-in (VOICE_LIVE_TESTS=1), never set here
+        run: python -m unittest discover -s voice/tests -t . -p 'test_*.py'
+
+  wheel:
+    name: wheel installs & bettercallgpt answers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+      - run: pip install build && python -m build --wheel
+      - name: clean install
+        run: |
+          python -m venv /tmp/v && /tmp/v/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/v/bin/python -c "import voice.app.daemon; from voice.live.providers import PROVIDERS; from voice.backend.registry import BACKENDS; from voice.prompts import compose; [compose(p, b, dialogs=d) for p in PROVIDERS for b in BACKENDS for d in (True, False)]; print('prompts OK')"
+          ! /tmp/v/bin/python -c "import voice.tests" 2>/dev/null   # tests stay out of the wheel
+          set +e; /tmp/v/bin/bettercallgpt doctor > doctor.json; rc=$?; set -e
+          test $rc -eq 1    # no credentials on the runner -> not ready, but a clean JSON answer
+          python3 -c "import json; d=json.load(open('doctor.json')); assert d['credentials_missing'] == ['AZURE_OPENAI_ENDPOINT','AZURE_OPENAI_API_KEY'], d; print('doctor OK')"
+          set +e; /tmp/v/bin/bettercallgpt --session ci-probe status > status.json; rc=$?; set -e
+          test $rc -eq 1    # no daemon for that session: exit 1 with a JSON "absent" snapshot
+          python3 -c "import json; d=json.load(open('status.json')); assert d['phase'] == 'absent', d; print('status OK')"

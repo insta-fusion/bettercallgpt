@@ -1,0 +1,171 @@
+{"seq": 2, "t": 0.423, "dir": "in", "event_id": "event_SYN000088", "type": "session.started", "client_event_id": "start", "session": {"id": "live_SYN000003", "expires_at": 1789859283, "model": "gpt-live-1", "instructions": "你是当前 coding session 的语音助手。默认说中文，简短自然，保留必要的 English 技术词。\n你身后有一个 coding agent（后台）在执行任务。凡是要检查代码、跑命令、改任务、停止任务、回答后台提出的问题、\n或操作者对正在做的事给出纠正或反馈——都交给后台去做（delegate），不要自己猜结果，不要自己回答技术状态。\n只有闲聊、寒暄、或操作者只是在确认你听见了，才自己回应。\n执行不可逆的动作（停止任务、批准权限）之前，先问一句确认。\n后台回话时，用自己的话简短转述。\n", "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": "marin"}}, "delegation": {"type": "client"}, "status": "active", "input": [], "context_management": {"type": "compaction"}}}
+{"seq": 4, "t": 0.977, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 5, "t": 1.082, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 6, "t": 1.176, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 7, "t": 1.282, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 8, "t": 1.379, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 9, "t": 1.465, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 600, "end_ms": 800, "delta": "你好", "event_id": "event_SYN000089"}
+{"seq": 10, "t": 1.483, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 11, "t": 1.581, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 12, "t": 1.679, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 13, "t": 1.782, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 14, "t": 1.877, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 15, "t": 1.996, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 16, "t": 2.094, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 17, "t": 2.094, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 1200, "end_ms": 1400, "delta": ",我", "event_id": "event_SYN000090"}
+{"seq": 18, "t": 2.187, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 19, "t": 2.29, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 20, "t": 2.307, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 1400, "end_ms": 1600, "delta": "想", "event_id": "event_SYN000091"}
+{"seq": 21, "t": 2.392, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 22, "t": 2.466, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 1600, "end_ms": 1800, "delta": "问", "event_id": "event_SYN000092"}
+{"seq": 23, "t": 2.49, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 24, "t": 2.591, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 27, "t": 2.689, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 28, "t": 2.853, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 29, "t": 2.953, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 30, "t": 2.957, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 2000, "end_ms": 2200, "delta": "一下", "event_id": "event_SYN000093"}
+{"seq": 31, "t": 3.053, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 32, "t": 3.158, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 33, "t": 3.161, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 2200, "end_ms": 2400, "delta": "嗨", "event_id": "event_SYN000094"}
+{"seq": 34, "t": 3.251, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 37, "t": 3.355, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 38, "t": 3.369, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 2400, "end_ms": 2600, "delta": ",", "event_id": "event_SYN000095"}
+{"seq": 39, "t": 3.451, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 40, "t": 3.553, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 41, "t": 3.567, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 2600, "end_ms": 2800, "delta": "你", "event_id": "event_SYN000096"}
+{"seq": 42, "t": 3.653, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 43, "t": 3.751, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 44, "t": 3.767, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 2800, "end_ms": 3000, "delta": "说", "event_id": "event_SYN000097"}
+{"seq": 45, "t": 3.853, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 46, "t": 3.929, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 3000, "end_ms": 3200, "delta": "。", "event_id": "event_SYN000098"}
+{"seq": 47, "t": 3.954, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 48, "t": 4.054, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 49, "t": 4.154, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 50, "t": 4.251, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 51, "t": 4.354, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 52, "t": 4.454, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 53, "t": 4.49, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 5000, "end_ms": 5200, "delta": "嗯", "event_id": "event_SYN000099"}
+{"seq": 54, "t": 4.554, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 55, "t": 4.654, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 56, "t": 4.752, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 57, "t": 4.852, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 58, "t": 4.954, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 59, "t": 5.057, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 60, "t": 5.155, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 61, "t": 5.253, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 62, "t": 5.326, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 5800, "end_ms": 6000, "delta": ",帮我", "event_id": "event_SYN000100"}
+{"seq": 63, "t": 5.355, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 64, "t": 5.452, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 65, "t": 5.527, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 6000, "end_ms": 6200, "delta": "查", "event_id": "event_SYN000101"}
+{"seq": 66, "t": 5.553, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 67, "t": 5.655, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 68, "t": 5.692, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 6200, "end_ms": 6400, "delta": "一下", "event_id": "event_SYN000102"}
+{"seq": 69, "t": 5.751, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 70, "t": 5.854, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 71, "t": 5.955, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 72, "t": 6.05, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 73, "t": 6.133, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 6600, "end_ms": 6800, "delta": "车", "event_id": "event_SYN000103"}
+{"seq": 74, "t": 6.154, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 75, "t": 6.255, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 76, "t": 6.304, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 6800, "end_ms": 7000, "delta": "位", "event_id": "event_SYN000104"}
+{"seq": 77, "t": 6.356, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 78, "t": 6.453, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 79, "t": 6.554, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 80, "t": 6.655, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 81, "t": 6.745, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 7200, "end_ms": 7400, "delta": "什么", "event_id": "event_SYN000105"}
+{"seq": 82, "t": 6.757, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 83, "t": 6.854, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 86, "t": 6.954, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 87, "t": 7.03, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 7400, "end_ms": 7600, "delta": "红", "event_id": "event_SYN000106"}
+{"seq": 88, "t": 7.052, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 89, "t": 7.154, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 90, "t": 7.215, "dir": "in", "type": "session.input_transcript.delta", "start_ms": 7600, "end_ms": 7800, "delta": "了", "event_id": "event_SYN000107"}
+{"seq": 91, "t": 7.215, "dir": "in", "type": "session.delegation.created", "offset_ms": 7600, "delegation": {"id": "item_SYN000004", "type": "delegation", "target": "client"}, "event_id": "event_SYN000108"}
+{"seq": 92, "t": 7.257, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 93, "t": 7.352, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 94, "t": 7.405, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 7800, "end_ms": 8000, "delta": " 好的", "event_id": "event_SYN000109"}
+{"seq": 95, "t": 7.451, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 96, "t": 7.556, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 97, "t": 7.608, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 8000, "end_ms": 8200, "delta": ",", "event_id": "event_SYN000110"}
+{"seq": 98, "t": 7.655, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 99, "t": 7.755, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 100, "t": 7.805, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 8200, "end_ms": 8400, "delta": "我", "event_id": "event_SYN000111"}
+{"seq": 101, "t": 7.854, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 102, "t": 7.956, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 103, "t": 8.009, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 8400, "end_ms": 8600, "delta": "来", "event_id": "event_SYN000112"}
+{"seq": 104, "t": 8.051, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 105, "t": 8.155, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 106, "t": 8.192, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 8600, "end_ms": 8800, "delta": "看看", "event_id": "event_SYN000113"}
+{"seq": 107, "t": 8.253, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 108, "t": 8.286, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 8800, "end_ms": 9000, "delta": "仓", "event_id": "event_SYN000114"}
+{"seq": 109, "t": 8.352, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 110, "t": 8.455, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 111, "t": 8.519, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 9200, "end_ms": 9400, "delta": "库的", "event_id": "event_SYN000115"}
+{"seq": 112, "t": 8.552, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 113, "t": 8.616, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 9400, "end_ms": 9600, "delta": "状态", "event_id": "event_SYN000116"}
+{"seq": 114, "t": 8.653, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 115, "t": 8.756, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 116, "t": 8.829, "dir": "in", "type": "session.output_transcript.delta", "start_ms": 9800, "end_ms": 10000, "delta": "。", "event_id": "event_SYN000117"}
+{"seq": 117, "t": 8.857, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 118, "t": 8.955, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 119, "t": 9.053, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 120, "t": 9.154, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 121, "t": 9.25, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 122, "t": 9.354, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 123, "t": 9.453, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 124, "t": 9.553, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 125, "t": 9.654, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 126, "t": 9.752, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 127, "t": 9.854, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 128, "t": 9.954, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 129, "t": 10.059, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 130, "t": 10.154, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 131, "t": 10.254, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 132, "t": 10.355, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 133, "t": 10.455, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 134, "t": 10.554, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 135, "t": 10.656, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 136, "t": 10.752, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 137, "t": 10.855, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 138, "t": 10.954, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 139, "t": 11.054, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 140, "t": 11.153, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 141, "t": 11.253, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 142, "t": 11.356, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 143, "t": 11.454, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 144, "t": 11.555, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 145, "t": 11.652, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 146, "t": 11.753, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 147, "t": 11.852, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 148, "t": 11.953, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 149, "t": 12.056, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 150, "t": 12.157, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 151, "t": 12.253, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 152, "t": 12.357, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 153, "t": 12.457, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 154, "t": 12.557, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 155, "t": 12.654, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 156, "t": 12.758, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 157, "t": 12.856, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 158, "t": 12.955, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 159, "t": 13.054, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 160, "t": 13.154, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 161, "t": 13.256, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 162, "t": 13.354, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 163, "t": 13.454, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 164, "t": 13.555, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 165, "t": 13.656, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 166, "t": 13.754, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 167, "t": 13.859, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 168, "t": 13.959, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 169, "t": 14.06, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 170, "t": 14.161, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 171, "t": 14.259, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 172, "t": 14.359, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 173, "t": 14.502, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 174, "t": 14.576, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 175, "t": 14.701, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 176, "t": 14.787, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 177, "t": 14.899, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 180, "t": 14.994, "dir": "in", "type": "session.output_audio.delta", "delta": 4800}
+{"seq": 181, "t": 15.413, "dir": "in", "type": "session.closed", "usage": {"seconds": 17.0}, "reason": "client_request", "session": {"id": "live_SYN000003", "expires_at": 1789859283, "model": "gpt-live-1", "instructions": "你是当前 coding session 的语音助手。默认说中文，简短自然，保留必要的 English 技术词。\n你身后有一个 coding agent（后台）在执行任务。凡是要检查代码、跑命令、改任务、停止任务、回答后台提出的问题、\n或操作者对正在做的事给出纠正或反馈——都交给后台去做（delegate），不要自己猜结果，不要自己回答技术状态。\n只有闲聊、寒暄、或操作者只是在确认你听见了，才自己回应。\n执行不可逆的动作（停止任务、批准权限）之前，先问一句确认。\n后台回话时，用自己的话简短转述。\n", "audio": {"format": {"type": "audio/pcm", "rate": 24000}, "output": {"voice": "marin"}}, "delegation": {"type": "client"}, "status": "active", "input": [], "context_management": {"type": "compaction"}}, "event_id": "event_SYN000118"}

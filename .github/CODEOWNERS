@@ -1,0 +1,4 @@
+# The voice daemon and its recorded fixtures need a maintainer's review.
+/voice/            @storyarcade
+/tests/fixtures/   @storyarcade
+/.github/          @storyarcade
