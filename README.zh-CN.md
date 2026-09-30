@@ -35,7 +35,7 @@ sequenceDiagram
     participant CC as Claude Code（你的会话）
     You->>GPT: 说：“把退款 bug 修了然后上线”
     GPT-->>You: 闲聊就地回答
-    GPT->>CC: 真正的请求以带 ⟨v#1⟩ 标记的一行进入会话
+    GPT->>CC: 真正的请求以带 ⟨v#35;1⟩ 标记的一行进入会话
     CC->>CC: 读代码、改代码、跑测试、推送
     CC-->>GPT: 进度和结果
     GPT-->>You: 读给你听，随时可以打断

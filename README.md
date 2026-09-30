@@ -43,7 +43,7 @@ sequenceDiagram
     participant CC as Claude Code (your session)
     You->>GPT: speak: "fix the refund bug and ship it"
     GPT-->>You: small talk is answered right here
-    GPT->>CC: real requests arrive as a line tagged ⟨v#1⟩
+    GPT->>CC: real requests arrive as a line tagged ⟨v#35;1⟩
     CC->>CC: reads, edits, runs tests, pushes
     CC-->>GPT: progress and results
     GPT-->>You: reads them back, you can interrupt any time
