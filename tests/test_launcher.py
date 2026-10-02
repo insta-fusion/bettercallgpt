@@ -264,13 +264,13 @@ class PluginTests(unittest.TestCase):
         plugin = self.ROOT / "plugin"
         files = sorted(p.relative_to(plugin).as_posix() for p in plugin.rglob("*")
                        if p.is_file() and p.name != ".DS_Store")
-        self.assertEqual(files, [".claude-plugin/plugin.json"]
+        self.assertEqual(files, [".claude-plugin/plugin.json", "README.md"]
                          + [f"commands/{n}.md" for n in sorted(self.COMMANDS)])
         manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
         # No inline hooks, MCP servers, agents or anything else that runs on its own.
         self.assertLessEqual({"name", "version"}, set(manifest))
-        self.assertLessEqual(set(manifest), {"name", "version", "description", "author",
-                                             "homepage", "repository", "license", "keywords"})
+        self.assertLessEqual(set(manifest), {"name", "displayName", "version", "description",
+                                             "author", "homepage", "repository", "license", "keywords"})
 
     def test_controls_report_only_what_status_confirms(self):
         for name in ("off",):

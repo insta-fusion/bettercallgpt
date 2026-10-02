@@ -124,10 +124,12 @@ Voice Live (delete the `VOICE_LIVE_PROVIDER=gpt_live` line).
 
 | | Today | Not yet |
 |---|---|---|
-| Agent | **Claude Code CLI on macOS** (proven live), any terminal | Claude desktop app's Code tab (unverified), Cowork (runs in a VM: unsupported), Codex as a child agent (`VOICE_BACKEND=process`, unit-tested) |
-| Voice | **Azure Voice Live** (default, proven live, echo-cancelled: speakers OK) | OpenAI Realtime (unit-tested; no echo cancellation: headphones); Azure GPT-Live (short live call; headphones) |
+| Agent | **Claude Code CLI on macOS**, any terminal, and the **Claude desktop app's Code tab** (both proven live) | Cowork (runs in a VM: unsupported), Codex as a child agent (`VOICE_BACKEND=process`, unit-tested) |
+| Voice | **Azure GPT Realtime** (`gpt-realtime-2.1` through Azure Voice Live; default, proven live, echo-cancelled: speakers OK) and the **Azure GPT-Live API** (`gpt-live-1`, proven live; headphones) | OpenAI Realtime API (unit-tested; no echo cancellation: headphones) |
 | OS | **macOS** | Linux/Windows: the Claude Code backend's peer check is macOS-only |
 | Orca | Works in any [Orca](https://github.com/stablyai/orca) pane; when the pane proves itself (needs the `orca` CLI) the call also tells you when Claude is waiting on a permission prompt | long calls in that mode: unverified |
+
+**Want it in another coding agent or CLI** (Codex, Gemini CLI, Cursor, Aider, …) or on another voice model or OS? [Open a support request](https://github.com/insta-fusion/bettercallgpt/issues/new?template=agent-support.yml) and say which one; requests decide what comes next.
 
 ## More
 
