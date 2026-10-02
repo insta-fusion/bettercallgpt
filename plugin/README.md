@@ -23,4 +23,17 @@ your keyboard. macOS only.
   that only you can open (0700). They stay on your machine.
 - **Fetches:** the tagged release from GitHub, on first use.
 
+## Where it works
+
+Claude Code on macOS: the CLI in any terminal, and the Code tab of the Claude desktop app. It needs a
+Mac microphone, so it does nothing in Claude chat, Cowork, or Claude Code on the web.
+
+## Why the key stays in a file
+
+The voice service key lives in `~/.config/bettercallgpt/.env` rather than in plugin settings so that it
+never enters a prompt, a command line or the model's context; only the local voice process reads it.
+
+"GPT" names the voice model the call runs on. This project is not affiliated with OpenAI, Microsoft
+or Anthropic.
+
 Full guide, security notes and source: https://github.com/insta-fusion/bettercallgpt
