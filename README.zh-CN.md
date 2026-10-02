@@ -99,7 +99,7 @@ bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户�
 | AI | **macOS 上的 Claude Code CLI**（任意终端）和 **Claude 桌面版的 Code 标签**（都实测可用） | Cowork（跑在虚拟机里：不支持）、Codex 作为子进程（`VOICE_BACKEND=process`，仅单元测试） |
 | 语音 | **Azure GPT Realtime**（`gpt-realtime-2.1`，经 Azure Voice Live；默认，实测可用，自带回声消除：外放也行）和 **Azure GPT-Live API**（`gpt-live-1`，实测可用，需戴耳机） | OpenAI Realtime API（仅单元测试，无回声消除：需戴耳机） |
 | 系统 | **macOS** | Linux / Windows：Claude Code 后端的进程归属校验目前只支持 macOS |
-| Orca | 在任意 [Orca](https://github.com/stablyai/orca) 窗格里都能用；窗格能证明归属时（需要 `orca` 命令），Claude 等你批准时语音会提醒你 | 这种模式下的长通话：未验证 |
+| Orca | 在任意 [Orca](https://github.com/stablyai/orca) 窗格里都能用；窗格能证明归属时（需要 `orca` 命令），Claude 等你批准时语音会提醒你：用 Orca 自己的 agent-wait 信号，它没报告等待时再读窗格 | 这种模式下的长通话：未验证 |
 
 **想在别的编程 agent 或 CLI 里用**（Codex、Gemini CLI、Cursor、Aider……），或者换别的语音模型、系统？[提一个支持请求](https://github.com/insta-fusion/bettercallgpt/issues/new?template=agent-support.yml)，写上是哪一个；下一步先做呼声最高的。
 

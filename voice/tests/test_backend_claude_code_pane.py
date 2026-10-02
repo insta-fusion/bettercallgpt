@@ -32,6 +32,8 @@ from voice.backend.claude_code.pane import (
     REFUSE_REGISTRY,
     REFUSE_UNPROVEN,
     Pane,
+    agent_wait,
+    apply_agent_wait,
     classify,
     dialog_identity,
     lstart_epoch,
@@ -48,6 +50,11 @@ RAW = json.loads((FIXTURE_DIR / "pane-raw.json").read_text())
 REAL_TAIL: list[str] = RAW["result"]["terminal"]["tail"]
 REAL_HANDLE = RAW["result"]["terminal"]["handle"]
 REAL_NONCE = "vlbind-7c2e91a4"          # measured: 2 hits in the owning pane
+
+# `orca terminal show --json` answers, keyed as Orca 1.4.200 renders them (measured shape,
+# synthetic values): a wait from each source, an evaluated null, the key absent (older Orca),
+# malformed values, and the ways the CLI itself can fail.
+SHOW = json.loads((FIXTURE_DIR / "orca-terminal-show.json").read_text())
 
 OWNER = {"pid": 51548, "start": "Sat Sep  5 23:30:58 2026", "tty": "ttys023",
          "comm": "claude"}
@@ -414,6 +421,188 @@ class RegistryTests(unittest.TestCase):
     def test_an_unparseable_start_is_none_not_zero(self):
         self.assertIsNone(registry_epoch("not a date"))
         self.assertIsNone(lstart_epoch(""))
+
+
+PERMISSION = "\n".join([
+    "│ Bash wants to run rm -rf build/ ?  │",
+    "│ ❯ 1. Yes                           │",
+    "│   2. Yes, and don't ask again      │",
+    "│   3. No                            │",
+    RULE, "❯", RULE,
+])
+COMPOSER = "\n".join([RULE, "❯", RULE, STATUS])
+
+
+def show_terminal(name: str) -> dict:
+    return SHOW["show"][name]["result"]["terminal"]
+
+
+class AgentWaitParseTests(unittest.TestCase):
+    """Orca's `agentWait`: null is an evaluated "no wait", absent or malformed is no verdict."""
+
+    def test_an_evaluated_null_is_no_wait(self):
+        self.assertEqual(agent_wait(show_terminal("no_wait")), {"waiting": False})
+
+    def test_an_absent_field_is_no_verdict(self):
+        """An older Orca, or a pane it cannot attribute: the screen decides alone."""
+        self.assertIsNone(agent_wait(show_terminal("absent")))
+
+    def test_each_published_source_is_a_wait(self):
+        for name, source in (("waiting_hook", "hook"), ("waiting_prompt_text", "prompt-text"),
+                             ("waiting_title", "title")):
+            with self.subTest(name=name):
+                verdict = agent_wait(show_terminal(name))
+                self.assertTrue(verdict["waiting"])
+                self.assertEqual(verdict["source"], source)
+
+    def test_reason_and_since_pass_through_when_present(self):
+        verdict = agent_wait(show_terminal("waiting_prompt_text"))
+        self.assertEqual(verdict["reason"], "agent-approval-prompt")
+        self.assertEqual(verdict["since"], 1790000000000)
+        self.assertIsNone(agent_wait(show_terminal("waiting_title"))["reason"])
+
+    def test_a_malformed_value_is_no_verdict_never_no_wait(self):
+        """Reading a bad payload as "no wait" would let it hide a dialog the screen can see."""
+        for raw in SHOW["malformed_agentWait"]:
+            with self.subTest(raw=raw):
+                self.assertIsNone(agent_wait({**show_terminal("absent"), "agentWait": raw}))
+
+    def test_a_failed_show_is_no_verdict(self):
+        for show in ({}, None, [], "agentWait: none"):
+            with self.subTest(show=show):
+                self.assertIsNone(agent_wait(show))
+
+
+class ApplyAgentWaitTests(unittest.TestCase):
+    """Orca decides WHETHER a dialog is up; the screen alone says what it shows."""
+
+    def test_no_verdict_leaves_the_screen_classification_unchanged(self):
+        screen = classify(PERMISSION, previous=None, at=1.0)
+        out = apply_agent_wait(screen, None, previous=None)
+        self.assertEqual(out["class"], CLS_DIALOG)
+        self.assertEqual(out["dialog"], screen["dialog"])
+        self.assertIsNone(out["agent_wait"])
+
+    def test_no_wait_never_removes_a_screen_dialog(self):
+        """ADD-ONLY. A missed prompt leaves the agent stuck in silence, so Orca's "no wait" is
+        read exactly like no verdict and the screen's dialog stands."""
+        screen = classify(PERMISSION, previous=None, at=1.0)
+        out = apply_agent_wait(screen, {"waiting": False}, previous=None)
+        self.assertEqual(out["class"], CLS_DIALOG)
+        self.assertEqual(out["dialog"], screen["dialog"])
+
+    def test_no_wait_leaves_other_classes_alone(self):
+        out = apply_agent_wait(classify(COMPOSER, previous=None, at=1.0),
+                               {"waiting": False}, previous=None)
+        self.assertEqual(out["class"], CLS_PROMPT)
+
+    def test_a_wait_keeps_the_screens_prompt_and_options(self):
+        screen = classify(PERMISSION, previous=None, at=1.0)
+        wait = agent_wait(show_terminal("waiting_hook"))
+        out = apply_agent_wait(screen, wait, previous=None)
+        self.assertEqual(out["dialog"]["options"], screen["dialog"]["options"])
+        self.assertEqual(out["dialog"]["hash"], screen["dialog"]["hash"])
+        self.assertEqual(out["agent_wait"], wait)
+
+    def test_a_wait_with_nothing_enumerable_is_a_dialog_with_no_options(self):
+        """The operator still hears that the agent waits; nothing can be named by position."""
+        wait = agent_wait(show_terminal("waiting_prompt_text"))
+        out = apply_agent_wait(classify(COMPOSER, previous=None, at=1.0), wait, previous=None)
+        self.assertEqual(out["class"], CLS_DIALOG)
+        self.assertEqual(out["dialog"]["options"], ())
+        self.assertIn("agent-approval-prompt", out["dialog"]["question"])
+        self.assertEqual(out["dialog"]["agent_wait"], wait)
+        self.assertEqual(out["dialog"]["occurrence"], 1)
+
+    def test_a_restamped_since_is_the_same_wait(self):
+        wait = agent_wait(show_terminal("waiting_hook"))
+        first = apply_agent_wait(classify(COMPOSER, previous=None, at=1.0), wait,
+                                 previous=None)
+        later = apply_agent_wait(classify(COMPOSER, previous=first, at=2.0),
+                                 {**wait, "since": wait["since"] + 5000}, previous=first)
+        self.assertEqual(later["dialog"]["hash"], first["dialog"]["hash"])
+        self.assertEqual(later["dialog"]["occurrence"], 1)
+
+    def test_a_wait_after_an_absence_is_a_new_occurrence(self):
+        wait = agent_wait(show_terminal("waiting_hook"))
+        first = apply_agent_wait(classify(COMPOSER, previous=None, at=1.0), wait,
+                                 previous=None)
+        faded = {**first["dialog"], "present": False}
+        gone = {**first, "class": CLS_PROMPT, "dialog": faded}
+        again = apply_agent_wait(classify(COMPOSER, previous=gone, at=3.0), wait,
+                                 previous=gone)
+        self.assertEqual(again["dialog"]["occurrence"], 2)
+
+
+class ShowRun(FakeRun):
+    """`show` answers with a recorded run() result; `read` replays a screen."""
+
+    def __init__(self, read_tail: list[str], *, show_result: dict) -> None:
+        super().__init__(read_tail)
+        self.show_result = show_result
+
+    async def __call__(self, argv: list[str], timeout: float) -> dict:
+        if "show" in argv:
+            self.argv.append(list(argv))
+            return self.show_result
+        return await super().__call__(argv, timeout)
+
+
+def show_ok(name: str) -> dict:
+    return {"ok": True, "returncode": 0, "stdout": json.dumps(SHOW["show"][name])}
+
+
+class ObserveAgentWaitTests(unittest.IsolatedAsyncioTestCase):
+    """End to end through `Pane.observe`: Orca's verdict first, the screen when there is none."""
+
+    def setUp(self) -> None:
+        self._real = paneg.owner_fingerprint
+        paneg.owner_fingerprint = lambda pid, **kw: dict(OWNER)
+
+    def tearDown(self) -> None:
+        paneg.owner_fingerprint = self._real
+
+    async def _observe(self, screen: str, show_result: dict) -> tuple[dict, ShowRun]:
+        run = ShowRun(screen.splitlines(), show_result=show_result)
+        pane = Pane(read_timeout=TEST_READ_TIMEOUT, start_granularity=TEST_START_GRANULARITY,
+                    ps_timeout=TEST_PS_TIMEOUT, terminal=REAL_HANDLE, run=run)
+        binding = {"owner": dict(OWNER), "incarnation": "inc-1", "handle": REAL_HANDLE}
+        out = await pane.observe(binding=binding, pending_tool_ids=frozenset())
+        return out, run
+
+    async def test_a_cli_failure_falls_back_to_the_screen(self):
+        for name, result in SHOW["run_failures"].items():
+            with self.subTest(failure=name):
+                out, _run = await self._observe(PERMISSION, result)
+                self.assertTrue(out["ok"])
+                self.assertEqual(out["classification"]["class"], CLS_DIALOG)
+                self.assertEqual(len(out["classification"]["dialog"]["options"]), 3)
+                self.assertIsNone(out["classification"]["agent_wait"])
+
+    async def test_an_older_orca_falls_back_to_the_screen(self):
+        out, _run = await self._observe(PERMISSION, show_ok("absent"))
+        self.assertEqual(out["classification"]["class"], CLS_DIALOG)
+
+    async def test_an_evaluated_no_wait_still_reports_the_screens_dialog(self):
+        out, _run = await self._observe(PERMISSION, show_ok("no_wait"))
+        self.assertEqual(out["classification"]["class"], CLS_DIALOG)
+        self.assertEqual(len(out["classification"]["dialog"]["options"]), 3)
+
+    async def test_an_evaluated_no_wait_adds_nothing_to_a_quiet_screen(self):
+        out, _run = await self._observe(COMPOSER, show_ok("no_wait"))
+        self.assertEqual(out["classification"]["class"], CLS_PROMPT)
+        self.assertIsNone(out["classification"]["dialog"])
+
+    async def test_a_wait_the_screen_cannot_enumerate_is_still_reported(self):
+        out, _run = await self._observe(COMPOSER, show_ok("waiting_prompt_text"))
+        self.assertEqual(out["classification"]["class"], CLS_DIALOG)
+        self.assertEqual(out["classification"]["dialog"]["options"], ())
+
+    async def test_reading_the_wait_sends_zero_keystrokes(self):
+        _out, run = await self._observe(COMPOSER, show_ok("waiting_hook"))
+        self.assertEqual(run.sent_keystrokes(), [])
+        for argv in run.argv:
+            self.assertIn(argv[2], ("read", "show"))
 
 
 if __name__ == "__main__":

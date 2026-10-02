@@ -1,0 +1,217 @@
+{
+  "show": {
+    "no_wait": {
+      "id": "req-SYN000001",
+      "ok": true,
+      "result": {
+        "terminal": {
+          "handle": "term_00000000-0000-4000-8000-000000000001",
+          "ptyId": "pty-SYN000001",
+          "incarnationId": "inc-1",
+          "orphaned": false,
+          "worktreeId": "wt-SYN000001",
+          "worktreePath": "/tmp/wt",
+          "branch": "main",
+          "tabId": "tab-SYN000001",
+          "leafId": "leaf-SYN000001",
+          "title": "claude",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1790000000000,
+          "executionHostId": "local",
+          "agentIdentity": "claude",
+          "preview": "",
+          "paneRuntimeId": 3,
+          "rendererGraphEpoch": 12,
+          "agentWait": null
+        }
+      },
+      "_meta": {
+        "runtimeId": "rt-SYN000001"
+      }
+    },
+    "absent": {
+      "id": "req-SYN000001",
+      "ok": true,
+      "result": {
+        "terminal": {
+          "handle": "term_00000000-0000-4000-8000-000000000001",
+          "ptyId": "pty-SYN000001",
+          "incarnationId": "inc-1",
+          "orphaned": false,
+          "worktreeId": "wt-SYN000001",
+          "worktreePath": "/tmp/wt",
+          "branch": "main",
+          "tabId": "tab-SYN000001",
+          "leafId": "leaf-SYN000001",
+          "title": "claude",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1790000000000,
+          "executionHostId": "local",
+          "agentIdentity": "claude",
+          "preview": "",
+          "paneRuntimeId": 3,
+          "rendererGraphEpoch": 12
+        }
+      },
+      "_meta": {
+        "runtimeId": "rt-SYN000001"
+      }
+    },
+    "waiting_hook": {
+      "id": "req-SYN000001",
+      "ok": true,
+      "result": {
+        "terminal": {
+          "handle": "term_00000000-0000-4000-8000-000000000001",
+          "ptyId": "pty-SYN000001",
+          "incarnationId": "inc-1",
+          "orphaned": false,
+          "worktreeId": "wt-SYN000001",
+          "worktreePath": "/tmp/wt",
+          "branch": "main",
+          "tabId": "tab-SYN000001",
+          "leafId": "leaf-SYN000001",
+          "title": "claude",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1790000000000,
+          "executionHostId": "local",
+          "agentIdentity": "claude",
+          "preview": "",
+          "paneRuntimeId": 3,
+          "rendererGraphEpoch": 12,
+          "agentWait": {
+            "source": "hook",
+            "since": 1790000000000
+          }
+        }
+      },
+      "_meta": {
+        "runtimeId": "rt-SYN000001"
+      }
+    },
+    "waiting_prompt_text": {
+      "id": "req-SYN000001",
+      "ok": true,
+      "result": {
+        "terminal": {
+          "handle": "term_00000000-0000-4000-8000-000000000001",
+          "ptyId": "pty-SYN000001",
+          "incarnationId": "inc-1",
+          "orphaned": false,
+          "worktreeId": "wt-SYN000001",
+          "worktreePath": "/tmp/wt",
+          "branch": "main",
+          "tabId": "tab-SYN000001",
+          "leafId": "leaf-SYN000001",
+          "title": "claude",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1790000000000,
+          "executionHostId": "local",
+          "agentIdentity": "claude",
+          "preview": "",
+          "paneRuntimeId": 3,
+          "rendererGraphEpoch": 12,
+          "agentWait": {
+            "source": "prompt-text",
+            "reason": "agent-approval-prompt",
+            "since": 1790000000000
+          }
+        }
+      },
+      "_meta": {
+        "runtimeId": "rt-SYN000001"
+      }
+    },
+    "waiting_title": {
+      "id": "req-SYN000001",
+      "ok": true,
+      "result": {
+        "terminal": {
+          "handle": "term_00000000-0000-4000-8000-000000000001",
+          "ptyId": "pty-SYN000001",
+          "incarnationId": "inc-1",
+          "orphaned": false,
+          "worktreeId": "wt-SYN000001",
+          "worktreePath": "/tmp/wt",
+          "branch": "main",
+          "tabId": "tab-SYN000001",
+          "leafId": "leaf-SYN000001",
+          "title": "claude",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1790000000000,
+          "executionHostId": "local",
+          "agentIdentity": "claude",
+          "preview": "",
+          "paneRuntimeId": 3,
+          "rendererGraphEpoch": 12,
+          "agentWait": {
+            "source": "title"
+          }
+        }
+      },
+      "_meta": {
+        "runtimeId": "rt-SYN000001"
+      }
+    }
+  },
+  "malformed_agentWait": [
+    "permission",
+    [],
+    1,
+    true,
+    {},
+    {
+      "source": "screen"
+    },
+    {
+      "source": null
+    },
+    {
+      "source": "hook",
+      "reason": 7
+    },
+    {
+      "source": "hook",
+      "since": "1790000000000"
+    },
+    {
+      "source": "hook",
+      "since": true
+    }
+  ],
+  "run_failures": {
+    "stale_handle": {
+      "ok": false,
+      "returncode": 1,
+      "stderr": "",
+      "stdout": "{\n  \"id\": \"local\",\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"terminal_handle_stale\",\n    \"message\": \"Terminal handle is stale.\",\n    \"data\": {}\n  },\n  \"_meta\": {\n    \"runtimeId\": null\n  }\n}\n"
+    },
+    "runtime_unavailable": {
+      "ok": false,
+      "returncode": 1,
+      "stderr": "",
+      "stdout": "{\n  \"id\": \"local\",\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"runtime_unavailable\",\n    \"message\": \"Orca is not running.\",\n    \"data\": {}\n  },\n  \"_meta\": {\n    \"runtimeId\": null\n  }\n}\n"
+    },
+    "timed_out": {
+      "ok": false,
+      "error": "pane read timed out"
+    },
+    "no_cli": {
+      "ok": false,
+      "returncode": 127,
+      "stdout": "",
+      "stderr": "orca: command not found\n"
+    },
+    "not_json": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "handle: x\nagentWait: none\n",
+      "stderr": ""
+    }
+  }
+}

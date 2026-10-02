@@ -352,13 +352,19 @@ class ClaudeCodeBackend(base.Backend):
         word understood.
 
         An option list we cannot enumerate structurally yields no dialog at all, and the broker
-        therefore cannot arm: the operator answers at the terminal.
+        therefore cannot arm: the operator answers at the terminal. The one exception is a wait
+        Orca itself reported with nothing enumerable on screen (`agent_wait` on the record): it
+        carries NO options by construction, so the operator hears that the agent is waiting and
+        the broker refuses to arm it (fewer than two options).
         """
         record = classification.get("dialog") or {}
         if str(classification.get("class") or "") != _DIALOG_CLASS:
             return None
         options = tuple((str(index), str(text)) for index, text in (record.get("options") or ()))
-        if len(options) < 2:
+        if record.get("agent_wait"):
+            if options:
+                return None
+        elif len(options) < 2:
             return None
         prompt = str(record.get("question") or "")
         if not prompt:
