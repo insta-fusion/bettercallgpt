@@ -80,7 +80,7 @@ Install [uv](https://docs.astral.sh/uv/), type `/plugin marketplace add insta-fu
 and `/plugin install bettercallgpt@bettercallgpt`, fill `~/.config/bettercallgpt/.env` from
 [`.env.example`](.env.example), then `/bettercallgpt:on`.
 
-Or pin the release without the skill: `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.1.0"`.
+Or pin the release without the skill: `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.1.1"`.
 
 ## Speakers or headphones? Pick the voice model
 

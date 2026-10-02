@@ -6,14 +6,14 @@ The reference half of the [README](../README.md): the status line, running witho
 
 **Status line (terminal).** `bettercallgpt statusline` prints `🎙 voice` while this session's call
 is live (`🎙 voice ↻` while the voice connection is renewed). With the skill's `uvx` setup the
-command is `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.1.0 bettercallgpt statusline`;
+command is `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.1.1 bettercallgpt statusline`;
 put it in `~/.claude/settings.json` → `statusLine`, or ask your agent to (update the version in it
 after an upgrade). The desktop app shows no status line — use `/bettercallgpt:status`.
 
 **Keep voice turns understood after `/compact`:** add [docs/HOST-INSTRUCTIONS.md](HOST-INSTRUCTIONS.md)
 to your `CLAUDE.md`.
 
-**Without the plugin.** Install the command once — `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.1.0"` (on Linux also install PortAudio) — or put the `uvx --from …` prefix above in front of every `bettercallgpt` below. Add [docs/HOST-INSTRUCTIONS.md](HOST-INSTRUCTIONS.md) to your
+**Without the plugin.** Install the command once — `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.1.1"` (on Linux also install PortAudio) — or put the `uvx --from …` prefix above in front of every `bettercallgpt` below. Add [docs/HOST-INSTRUCTIONS.md](HOST-INSTRUCTIONS.md) to your
 `CLAUDE.md` (or `AGENTS.md`) once, so the agent treats `⟨v#…⟩` lines as you speaking. Then ask
 the agent to start voice; it runs, from its own Bash tool:
 

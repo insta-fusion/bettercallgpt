@@ -236,7 +236,7 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(market["plugins"][0]["source"], "./plugin")
 
     # Every command runs the release this plugin belongs to through uvx: nothing to install.
-    VV = "uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.1.0 bettercallgpt"
+    VV = "uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.1.1 bettercallgpt"
     # On, off, status — as in Codex. No mute: the daemon has none.
     COMMANDS = {"on": None, "off": f"{VV} stop", "status": f"{VV} status"}
 
