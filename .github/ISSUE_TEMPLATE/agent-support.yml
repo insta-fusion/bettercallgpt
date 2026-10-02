@@ -1,0 +1,28 @@
+name: Support request
+description: Ask for another coding agent, CLI, voice model or OS
+title: "Support: "
+labels: ["support-request"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What should it support?
+      options:
+        - A coding agent or CLI (Codex, Gemini CLI, Cursor, Aider, ...)
+        - A voice model or provider
+        - An operating system
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Which one?
+      placeholder: e.g. Gemini CLI on Linux
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: How would you use it?
+      description: One or two lines is enough. Never paste a key.

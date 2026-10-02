@@ -35,7 +35,7 @@ def _tool_use(command: str, *, name="Bash", ts=AFTER, sidechain=False, session="
                                      "input": {"command": command}}]}}
 
 
-LAUNCH_CMD = f"NONCE={NONCE} vibe-voice --nonce {NONCE} start"
+LAUNCH_CMD = f"NONCE={NONCE} bettercallgpt --nonce {NONCE} start"
 LAUNCH = _tool_use(LAUNCH_CMD)
 
 
@@ -216,7 +216,7 @@ class HandshakeChoosesTheProof(unittest.TestCase):
             # a refused launch never blocks a fresh one
             fresh = "vvnonce-fresh0001"
             t.write_text(t.read_text() + json.dumps(_tool_use(
-                f"NONCE={fresh} vibe-voice --nonce {fresh} start")) + "\n")
+                f"NONCE={fresh} bettercallgpt --nonce {fresh} start")) + "\n")
             with mock.patch.dict(os.environ, {"NONCE": fresh}):
                 again = asyncio.run(daemon._handshake("s1", argparse.Namespace(nonce=fresh,
                                                                                 terminal="")))
@@ -224,7 +224,7 @@ class HandshakeChoosesTheProof(unittest.TestCase):
             # a claim that cannot be recorded refuses (never binds, never a traceback)
             other = "vvnonce-unrec0001"
             t.write_text(t.read_text() + json.dumps(_tool_use(
-                f"NONCE={other} vibe-voice --nonce {other} start")) + "\n")
+                f"NONCE={other} bettercallgpt --nonce {other} start")) + "\n")
             with mock.patch.object(daemon.voice_platform, "private_dir",
                                    side_effect=PermissionError("denied")), \
                  mock.patch.dict(os.environ, {"NONCE": other}):
