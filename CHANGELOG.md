@@ -4,7 +4,20 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versions follow
 [SemVer](https://semver.org/) with a pre-1.0 caveat: minor bumps may break.
 
-## [0.1.0] - Unreleased (first public release)
+## [0.1.1] - 2026-10-02
+
+### Added
+- In an Orca pane, the call now uses Orca's own agent-wait signal (`orca terminal show --json`,
+  field `agentWait`) to tell you when Claude is waiting on a permission prompt. It only adds: when
+  Orca reports no wait, the screen reading still decides, so a prompt is never hidden.
+
+### Changed
+- Plugin README: where it works (Claude Code on macOS, CLI and desktop Code tab), why the voice key
+  stays in a local file, and that the project is not affiliated with OpenAI, Microsoft or Anthropic.
+- README: the support table names the verified surfaces and voice services, and links a request form
+  for other agents, CLIs and voice models.
+
+## [0.1.0] - 2026-10-01 (first public release)
 
 A full-duplex voice call for a Claude Code session, powered by GPT Realtime (Azure Voice Live
 by default; OpenAI Realtime experimental).
