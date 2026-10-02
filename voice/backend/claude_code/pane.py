@@ -302,6 +302,82 @@ def classify(screen: str, *, previous: dict | None, at: float) -> dict:
     return result
 
 
+# ---------------------------------------------------------------- Orca's own wait signal
+#
+# `orca terminal show --json` carries `agentWait`: Orca's own answer to "is the agent in this
+# pane waiting on an interactive prompt", taken from its agent hooks, its prompt matcher or the
+# terminal title. Absent means Orca did not evaluate it (an older Orca, a pane it cannot
+# attribute); null means evaluated, no wait; an object means waiting.
+#
+# It answers WHETHER, never WHAT: it carries no prompt text and no options. So when Orca has
+# evaluated it, it decides whether a dialog is up, and the words read back and the options
+# anything could name still come only from the screen. When it is absent or unreadable, the
+# screen decides alone, exactly as before.
+
+# The sources Orca publishes. An unknown source is a field we cannot vouch for, so it is read
+# as no evaluation at all and the screen decides.
+_WAIT_SOURCES = frozenset({"hook", "prompt-text", "title"})
+
+
+def agent_wait(show: Any) -> dict | None:
+    """Orca's wait verdict from a `terminal show` payload, or None when there is none to use.
+
+    `{"waiting": False}` for an evaluated null; `{"waiting": True, "source", "reason", "since"}`
+    for a wait. None for absent, malformed, or a show that failed — the caller then reads the
+    screen alone. A malformed value never reads as "no wait": that would let a bad payload hide
+    a dialog the screen can see.
+    """
+    if not isinstance(show, dict) or "agentWait" not in show:
+        return None
+    raw = show["agentWait"]
+    if raw is None:
+        return {"waiting": False}
+    if not isinstance(raw, dict) or raw.get("source") not in _WAIT_SOURCES:
+        return None
+    reason = raw.get("reason")
+    since = raw.get("since")
+    if reason is not None and not isinstance(reason, str):
+        return None
+    if since is not None and (isinstance(since, bool) or not isinstance(since, (int, float))):
+        return None
+    return {"waiting": True, "source": raw["source"], "reason": reason, "since": since}
+
+
+def apply_agent_wait(classification: dict, wait: dict | None, *,
+                     previous: dict | None) -> dict:
+    """Let Orca's verdict decide whether a dialog is up; the screen still supplies what it says.
+
+    * no verdict: the screen classification, unchanged.
+    * no wait: a screen dialog is dropped to `unknown` — Orca saw no prompt, so a picker-shaped
+      screen is scrollback or prose, not a live widget.
+    * waiting, screen dialog: the screen's dialog, with the verdict attached.
+    * waiting, no enumerable screen dialog: a dialog with NO options, so the operator hears that
+      the agent is waiting. Nothing can be named by position, so the broker never arms it.
+    """
+    out = dict(classification)
+    out["agent_wait"] = wait
+    if wait is None:
+        return out
+    if not wait["waiting"]:
+        if out.get("class") == CLS_DIALOG:
+            out.update({"class": CLS_UNKNOWN, "dialog": None, "reason": "no_agent_wait"})
+        return out
+    if out.get("class") == CLS_DIALOG:
+        return out
+    previous = previous if isinstance(previous, dict) else None
+    # `since` stays out of the identity: the hook may restamp it while the same prompt is up,
+    # and an appearance after an absence is already a new occurrence by the counter.
+    described = (f"waiting on a prompt in the terminal (Orca agentWait: "
+                 f"{wait['reason'] or 'interactive prompt'}, via {wait['source']})")
+    record = dialog_identity(described, options=(),
+                             previous=(previous or {}).get("dialog"),
+                             incarnation=(previous or {}).get("incarnation"),
+                             tool_id=(previous or {}).get("tool_id"))
+    record["agent_wait"] = wait
+    out.update({"class": CLS_DIALOG, "dialog": record, "reason": "agent_wait"})
+    return out
+
+
 # ---------------------------------------------------------------- owner identity
 
 def owner_fingerprint(pid: int, *, ps_timeout: float,
@@ -568,7 +644,9 @@ class Pane:
             return self._refuse(REFUSE_UNPROVEN, nonce=nonce, hits=0, tail_lines=len(tail))
 
         show = await self._show()
-        classification = classify("\n".join(tail), previous=None, at=read["captured_at"])
+        classification = apply_agent_wait(
+            classify("\n".join(tail), previous=None, at=read["captured_at"]),
+            agent_wait(show), previous=None)
         self._last = classification
 
         return {
@@ -646,7 +724,12 @@ class Pane:
         if previous is not None:
             previous["incarnation"] = binding.get("incarnation")
             previous["tool_id"] = self._sole_tool_id(pending_tool_ids)
-        classification = classify(screen, previous=previous, at=read["captured_at"])
+        # Orca's verdict was taken with the metadata, a moment BEFORE the screen. A prompt that
+        # opens in between is seen on the next observation; one that closes in between leaves
+        # a stale verdict for one poll, which only ever reports a wait, never an approval.
+        classification = apply_agent_wait(
+            classify(screen, previous=previous, at=read["captured_at"]),
+            agent_wait(show), previous=previous)
 
         # A dialog that has gone away is remembered as ABSENT, so the NEXT dialog gets a fresh
         # occurrence. Forgetting it would restart the counter at 1 and let a stale confirmation

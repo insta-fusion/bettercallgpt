@@ -93,7 +93,11 @@ A backend observes one harness and actuates it; it decides no meaning.
   session's messaging socket after proving the peer against the session registry, per frame.
   Ownership is proven one of two ways, zero keystrokes either way:
   - **with an Orca pane** (`--terminal`): the pane is read (never typed into) and the launch
-    nonce must appear inside a RUNNING tool-call block; dialogs become observable.
+    nonce must appear inside a RUNNING tool-call block; dialogs become observable. Whether a
+    dialog is up comes from Orca's own `agentWait` (`orca terminal show --json`) when Orca
+    reports it; its wording and options come only from the screen. A wait with nothing
+    enumerable on screen is reported with no options, so it is announced and never armed.
+    Without `agentWait` (older Orca, a failed call) the screen decides alone.
   - **without a screen** (any terminal; the Claude desktop app is unverified): the launcher
     descends from the claude process the session registry names (alive, start time matching);
     the session's own transcript holds exactly one tool call carrying the nonce as a whole

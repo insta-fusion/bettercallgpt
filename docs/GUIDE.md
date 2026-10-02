@@ -27,8 +27,11 @@ descends from that session's `claude` process, the session's own transcript hold
 one fresh Bash call carrying the nonce, its own environment carries `NONCE=<n>`, and each
 nonce binds once. In an [Orca](https://github.com/stablyai/orca) terminal pane, `start` tries
 the pane first: when the pane proof holds (the nonce is on that pane's screen inside the running
-Bash call), it binds with `--terminal "$ORCA_TERMINAL_HANDLE"` and the daemon reads the pane —
-never types into it — so it can tell you when a permission prompt is waiting. Otherwise (no
+Bash call), it binds with `--terminal "$ORCA_TERMINAL_HANDLE"` and the daemon can tell you when
+a permission prompt is waiting. It asks Orca first — the `agentWait` field of
+`orca terminal show --json`, Orca's own agent-wait signal — and reads the pane (never types
+into it) for the prompt's wording and options; when Orca does not report that field, or the
+call fails, it falls back to reading the pane alone. Otherwise (no
 `orca` CLI, a stale handle, tmux, a headless session) the start proceeds exactly as above.
 `bettercallgpt doctor` shows it as `orca_pane`; export `BETTERCALLGPT_ORCA_PANE=0` to skip it.
 Approvals are always answered on the keyboard. The session id comes from

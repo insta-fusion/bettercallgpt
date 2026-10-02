@@ -372,6 +372,39 @@ class E2DialogTransitionTests(unittest.TestCase):
         adapter.ingest_pane_observation(screen)
         self.assertEqual(adapter.drain(), [])
 
+    def _agent_wait_screen(self, options=()):
+        wait = {"waiting": True, "source": "hook", "reason": None, "since": None}
+        return {"ok": True, "lost": None, "classification": {
+            "class": "dialog", "agent_wait": wait,
+            "dialog": {"hash": "w1", "occurrence": 1, "agent_wait": wait,
+                       "question": "waiting on a prompt in the terminal (Orca agentWait: "
+                                   "interactive prompt, via hook)",
+                       "options": options, "present": True},
+        }}
+
+    def test_a_wait_orca_reported_opens_with_no_options_and_never_arms(self):
+        """The operator hears that the agent waits; the broker still needs two options, and
+        no index is on screen to press."""
+        from voice.agent.broker import Broker
+
+        adapter, pane, _t, _r = make_adapter(pressable=True)
+        adapter.ingest_pane_observation(self._agent_wait_screen())
+        [obs] = adapter.drain()
+        self.assertEqual(obs.payload["transition"], "open")
+        self.assertEqual(obs.dialog.options, ())
+        broker = Broker()
+        self.assertIsNone(broker.arm(obs.dialog, 1))
+        self.assertEqual(broker.history[-1].reason, "not_enumerable")
+        receipt = run(adapter.answer(obs.dialog.occurrence_id, "1"))
+        self.assertEqual(receipt.outcome, "refused")
+        self.assertEqual(pane.presses, [])
+
+    def test_a_wait_record_with_partial_options_is_not_reported(self):
+        """Options on a wait record mean a screen widget we could not finish reading."""
+        adapter, _p, _t, _r = make_adapter()
+        adapter.ingest_pane_observation(self._agent_wait_screen(options=((1, "OK"),)))
+        self.assertEqual(adapter.drain(), [])
+
 
 class E6OwnerLossFenceTests(unittest.TestCase):
     """E6 — a gap found in the split: a `lost` reason refuses the NEXT actuation."""

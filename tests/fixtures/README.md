@@ -14,6 +14,10 @@ ids and every recognised-vs-interpreted mismatch the tests rely on untouched.
   synthetic prose, with the structure the pane parser reads (glyphs, the running-command block
   with the nonce as its first token, the status line) as recorded
   (`test_backend_claude_code_pane.py`).
+- `orca-terminal-show.json` — `orca terminal show --json` answers keyed as Orca renders them
+  (shape measured on Orca 1.4.200, values synthetic): `agentWait` from each source, an evaluated
+  `null`, the field absent (an older Orca), malformed values, and failed CLI calls
+  (`test_backend_claude_code_pane.py`).
 - `voice-rt-R0.jsonl`, `voice-rt-R2.jsonl`, `voice-rt-R6.jsonl`, `voice-rt-R11-D-mixed.jsonl` —
   recorded Azure Realtime spike sessions replayed by
   `test_wire_replay.py` (the strategy contract).
