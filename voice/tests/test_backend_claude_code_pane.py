@@ -483,12 +483,13 @@ class ApplyAgentWaitTests(unittest.TestCase):
         self.assertEqual(out["dialog"], screen["dialog"])
         self.assertIsNone(out["agent_wait"])
 
-    def test_no_wait_drops_a_screen_dialog_to_unknown(self):
-        out = apply_agent_wait(classify(PERMISSION, previous=None, at=1.0),
-                               {"waiting": False}, previous=None)
-        self.assertEqual(out["class"], CLS_UNKNOWN)
-        self.assertIsNone(out["dialog"])
-        self.assertEqual(out["reason"], "no_agent_wait")
+    def test_no_wait_never_removes_a_screen_dialog(self):
+        """ADD-ONLY. A missed prompt leaves the agent stuck in silence, so Orca's "no wait" is
+        read exactly like no verdict and the screen's dialog stands."""
+        screen = classify(PERMISSION, previous=None, at=1.0)
+        out = apply_agent_wait(screen, {"waiting": False}, previous=None)
+        self.assertEqual(out["class"], CLS_DIALOG)
+        self.assertEqual(out["dialog"], screen["dialog"])
 
     def test_no_wait_leaves_other_classes_alone(self):
         out = apply_agent_wait(classify(COMPOSER, previous=None, at=1.0),
@@ -582,10 +583,15 @@ class ObserveAgentWaitTests(unittest.IsolatedAsyncioTestCase):
         out, _run = await self._observe(PERMISSION, show_ok("absent"))
         self.assertEqual(out["classification"]["class"], CLS_DIALOG)
 
-    async def test_an_evaluated_no_wait_drops_a_picker_shaped_screen(self):
+    async def test_an_evaluated_no_wait_still_reports_the_screens_dialog(self):
         out, _run = await self._observe(PERMISSION, show_ok("no_wait"))
+        self.assertEqual(out["classification"]["class"], CLS_DIALOG)
+        self.assertEqual(len(out["classification"]["dialog"]["options"]), 3)
+
+    async def test_an_evaluated_no_wait_adds_nothing_to_a_quiet_screen(self):
+        out, _run = await self._observe(COMPOSER, show_ok("no_wait"))
+        self.assertEqual(out["classification"]["class"], CLS_PROMPT)
         self.assertIsNone(out["classification"]["dialog"])
-        self.assertEqual(out["classification"]["reason"], "no_agent_wait")
 
     async def test_a_wait_the_screen_cannot_enumerate_is_still_reported(self):
         out, _run = await self._observe(COMPOSER, show_ok("waiting_prompt_text"))

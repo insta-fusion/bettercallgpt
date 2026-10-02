@@ -309,10 +309,12 @@ def classify(screen: str, *, previous: dict | None, at: float) -> dict:
 # terminal title. Absent means Orca did not evaluate it (an older Orca, a pane it cannot
 # attribute); null means evaluated, no wait; an object means waiting.
 #
-# It answers WHETHER, never WHAT: it carries no prompt text and no options. So when Orca has
-# evaluated it, it decides whether a dialog is up, and the words read back and the options
-# anything could name still come only from the screen. When it is absent or unreadable, the
-# screen decides alone, exactly as before.
+# It answers WHETHER, never WHAT: it carries no prompt text and no options, so the words read
+# back and the options anything could name still come only from the screen. And it only ADDS: a
+# wait Orca reports is heard even when the screen cannot be read as a dialog, but Orca's "no
+# wait" never removes a dialog the screen found. A missed prompt leaves the agent stuck in
+# silence; a rare false "waiting" costs one sentence. Absent, null or unreadable, the screen
+# decides alone, exactly as before.
 
 # The sources Orca publishes. An unknown source is a field we cannot vouch for, so it is read
 # as no evaluation at all and the screen decides.
@@ -323,9 +325,8 @@ def agent_wait(show: Any) -> dict | None:
     """Orca's wait verdict from a `terminal show` payload, or None when there is none to use.
 
     `{"waiting": False}` for an evaluated null; `{"waiting": True, "source", "reason", "since"}`
-    for a wait. None for absent, malformed, or a show that failed — the caller then reads the
-    screen alone. A malformed value never reads as "no wait": that would let a bad payload hide
-    a dialog the screen can see.
+    for a wait. None for absent, malformed, or a show that failed. Only a wait changes anything
+    downstream; every other answer leaves the screen to decide alone.
     """
     if not isinstance(show, dict) or "agentWait" not in show:
         return None
@@ -345,24 +346,16 @@ def agent_wait(show: Any) -> dict | None:
 
 def apply_agent_wait(classification: dict, wait: dict | None, *,
                      previous: dict | None) -> dict:
-    """Let Orca's verdict decide whether a dialog is up; the screen still supplies what it says.
+    """Add Orca's wait to the screen classification; never take a screen dialog away.
 
-    * no verdict: the screen classification, unchanged.
-    * no wait: a screen dialog is dropped to `unknown` — Orca saw no prompt, so a picker-shaped
-      screen is scrollback or prose, not a live widget.
+    * no verdict, or Orca's "no wait": the screen classification, unchanged.
     * waiting, screen dialog: the screen's dialog, with the verdict attached.
     * waiting, no enumerable screen dialog: a dialog with NO options, so the operator hears that
       the agent is waiting. Nothing can be named by position, so the broker never arms it.
     """
     out = dict(classification)
     out["agent_wait"] = wait
-    if wait is None:
-        return out
-    if not wait["waiting"]:
-        if out.get("class") == CLS_DIALOG:
-            out.update({"class": CLS_UNKNOWN, "dialog": None, "reason": "no_agent_wait"})
-        return out
-    if out.get("class") == CLS_DIALOG:
+    if wait is None or not wait["waiting"] or out.get("class") == CLS_DIALOG:
         return out
     previous = previous if isinstance(previous, dict) else None
     # `since` stays out of the identity: the hook may restamp it while the same prompt is up,
@@ -725,8 +718,8 @@ class Pane:
             previous["incarnation"] = binding.get("incarnation")
             previous["tool_id"] = self._sole_tool_id(pending_tool_ids)
         # Orca's verdict was taken with the metadata, a moment BEFORE the screen. A prompt that
-        # opens in between is seen on the next observation; one that closes in between leaves
-        # a stale verdict for one poll, which only ever reports a wait, never an approval.
+        # opens in between is still found by the screen; one that closes in between leaves a
+        # stale wait for one poll, which only ever reports a wait, never an approval.
         classification = apply_agent_wait(
             classify(screen, previous=previous, at=read["captured_at"]),
             agent_wait(show), previous=previous)
