@@ -900,6 +900,114 @@ class PermissionChannel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(announced), 1)
 
 
+class StatusHeartbeat(unittest.IsolatedAsyncioTestCase):
+    """While the call runs, `at` is refreshed every STATUS_HEARTBEAT_S, so a status a killed
+    process left behind reads as stale (the hooks module trusts `at` for 30 s)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+
+    def _daemon(self, clock):
+        daemon = VoiceDaemon.__new__(VoiceDaemon)
+        daemon.status = Status(self.dir / "status.json", session_id="s", now=lambda: clock[0])
+        daemon.status.set(phase="running", relay="qualified")
+        return daemon
+
+    async def test_at_is_refreshed_every_period_on_a_fake_clock(self):
+        clock = [1000.0]
+        daemon = self._daemon(clock)
+        waits, seen_at = [], []
+
+        async def fake_wait_for(awaitable, timeout):
+            awaitable.close()                       # the stop event's wait, never started
+            waits.append(timeout)
+            seen_at.append(Status.read(self.dir / "status.json")["at"])
+            clock[0] += timeout
+            if len(waits) == 4:
+                daemon._shut = True                 # the ending starts during the 4th wait
+            raise asyncio.TimeoutError
+
+        await daemon._heartbeat(daemon_mod.STATUS_HEARTBEAT_S, wait_for=fake_wait_for)
+        self.assertEqual(waits, [daemon_mod.STATUS_HEARTBEAT_S] * 4)
+        self.assertEqual(seen_at, [1000.0, 1010.0, 1020.0, 1030.0])
+        final = Status.read(self.dir / "status.json")
+        self.assertEqual(final["at"], 1030.0, "no beat once the ending started")
+        self.assertEqual((final["phase"], final["relay"]), ("running", "qualified"))
+
+    async def test_the_ending_stops_it_at_once(self):
+        daemon = self._daemon([1000.0])
+        task = asyncio.ensure_future(daemon._heartbeat(3600.0))
+        await asyncio.sleep(0)
+        daemon._shut = True
+        daemon._stopping().set()
+        await asyncio.wait_for(task, 1.0)
+        self.assertEqual(Status.read(self.dir / "status.json")["at"], 1000.0)
+
+    async def test_the_run_beats_with_the_declared_cadence(self):
+        daemon = _idle_daemon(_IdleLoop(), _Backend("idle"))
+        beats = []
+
+        async def heartbeat(every):
+            beats.append(every)
+            await asyncio.Event().wait()
+
+        daemon._heartbeat = heartbeat
+        with mock.patch.object(daemon_mod.voice_config, "cfg", side_effect=_idle_cfg("0.0005")):
+            await asyncio.wait_for(daemon._run(), 2.0)
+        self.assertEqual(beats, [daemon_mod.STATUS_HEARTBEAT_S])
+
+    async def test_its_own_writes_wake_the_watcher_into_no_work(self):
+        """The heartbeat writes into the directory the control watcher watches. Each wake must
+        dedupe the control and permission files it already read, and nothing may loop."""
+        from voice import platform as voice_platform
+
+        commands, reports, wakes = [], [], []
+
+        async def on_command(command):
+            commands.append(command)
+
+        controller = daemon_mod.ControlWatcher(
+            self.dir, on_command, on_permission=reports.append, since=0.0,
+            open_watch=lambda p: voice_platform.watch(p, poll_s=0.01))
+        real_wake = controller._wake
+
+        def counting_wake(drained=False):
+            wakes.append(1)
+            real_wake(drained)
+
+        controller._wake = counting_wake
+        controller.start(asyncio.get_running_loop())
+        self.addCleanup(controller.close)
+
+        async def settle_until(predicate):
+            for _ in range(200):
+                if predicate():
+                    return
+                await asyncio.sleep(0.01)
+
+        atomic_write(self.dir / daemon_mod.CONTROL_NAME, {"command": "stop", "at": 5.0})
+        (self.dir / daemon_mod.PERMISSION_NAME).write_text(
+            json.dumps({"at": 6.0, "tool": "Bash", "summary": "ls"}), encoding="utf-8")
+        await settle_until(lambda: commands and reports)
+        self.assertEqual((commands, len(reports)), (["stop"], 1))
+
+        before = len(wakes)
+        clock = [100.0]
+        status = Status(self.dir / "status.json", session_id="s", now=lambda: clock[0])
+        for _ in range(5):                                   # five beats
+            clock[0] += 10
+            status.set()
+            await asyncio.sleep(0.03)
+        await settle_until(lambda: len(wakes) > before)
+        self.assertGreater(len(wakes), before, "the beats do wake the directory watch")
+        settled = len(wakes)
+        await asyncio.sleep(0.2)
+        self.assertEqual(len(wakes), settled, "nothing loops once the beats stop")
+        self.assertEqual((commands, len(reports)), (["stop"], 1), "deduped: no repeat work")
+
+
 class ClaudeCodeWiring(unittest.IsolatedAsyncioTestCase):
     """The real graph, from a fake binding and a fake terminal reader.
 

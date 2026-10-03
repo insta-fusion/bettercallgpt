@@ -15,6 +15,9 @@ import type { CallLive } from '../types'
 const APP = 'bettercallgpt'
 const POLL_MS = 2000
 const SUMMARY_MAX = 200
+// The voice process refreshes `at` in status.json every 10 s while the call runs; older than
+// this, the status is one a killed process left behind.
+const STALE_AFTER_S = 30
 // The session ids the launcher accepts (bettercallgpt/cli.py SESSION_ID): a name, never a path.
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const FILE_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
@@ -35,14 +38,16 @@ async function stateRoot($: EngineInterface): Promise<string | undefined> {
   return home === undefined ? undefined : `${home}/.local/state/${APP}`
 }
 
-/** The same rule as `bettercallgpt statusline`, less the pid probe: running, relay
- * qualified, not ended (an empty `ended` object is "not ended", as in Python). */
-export function isLive(status: unknown): boolean {
+/** The rule of `bettercallgpt statusline` with a fresh heartbeat in place of its pid probe:
+ * running, relay qualified, not ended (an empty `ended` object is "not ended", as in Python),
+ * and `at` (epoch seconds) at most STALE_AFTER_S old. */
+export function isLive(status: unknown, nowSeconds: number): boolean {
   if (typeof status !== 'object' || status === null) return false
-  const { phase, relay, ended } = status as Record<string, unknown>
+  const { phase, relay, ended, at } = status as Record<string, unknown>
   const hasEnded =
     typeof ended === 'object' && ended !== null ? Object.keys(ended).length > 0 : Boolean(ended)
-  return phase === 'running' && relay === 'qualified' && !hasEnded
+  const isFresh = typeof at === 'number' && nowSeconds - at <= STALE_AFTER_S
+  return phase === 'running' && relay === 'qualified' && !hasEnded && isFresh
 }
 
 /** The call's state directory when this session is on a live call, else undefined. */
@@ -54,7 +59,7 @@ async function liveCallDir($: EngineInterface, sessionId: string): Promise<strin
   const statusPath = `${dir}/status.json`
   if (!(await $.fs.exists(statusPath))) return undefined
   const status: unknown = JSON.parse(await $.fs.read(statusPath))
-  return isLive(status) ? dir : undefined
+  return isLive(status, (await $.clock.now()) / 1000) ? dir : undefined
 }
 
 /** One line naming what the prompt is about: the Bash command, the file, or the MCP tool. */

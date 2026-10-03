@@ -8,7 +8,8 @@ const SID = '0b4e7c1a-9d2f-4e55-8a3b-1c2d3e4f5a6b'
 const HOME = '/home/u'
 const DIR = `${HOME}/.local/state/bettercallgpt/${SID}`
 const NOW_MS = 1_790_000_000_000
-const LIVE = { phase: 'running', relay: 'qualified', ended: {}, pid: 4242 }
+// A live call: its heartbeat refreshed `at` 5 s ago.
+const LIVE = { phase: 'running', relay: 'qualified', ended: {}, pid: 4242, at: NOW_MS / 1000 - 5 }
 // What the engine beneath answers; the plugin must hand it back exactly.
 const BELOW = { stopReason: 'from below' }
 const PROMPT = { tool_name: 'Bash', tool_input: { command: 'touch  hello.txt\n' }, session_id: SID }
@@ -64,6 +65,8 @@ describe('classic.PermissionRequest', () => {
       { ...LIVE, phase: 'ended', ended: { reason: 'stopped by control' } },
       { ...LIVE, relay: 'probing' },
       { ...LIVE, ended: { reason: 'stream ended' } },
+      { ...LIVE, at: NOW_MS / 1000 - 31 },          // a heartbeat that stopped: a dead writer
+      { ...LIVE, at: undefined },
     ]) {
       files.clear()
       if (value !== undefined) files.set(`${DIR}/status.json`, JSON.stringify(value))
@@ -154,6 +157,22 @@ describe('the band above the prompt', () => {
     files.set(`${DIR}/status.json`, JSON.stringify({ ...LIVE, phase: 'ended', ended: { reason: 'x' } }))
     await clock.advance(2000)
     const ui = await $.ui.mount({ plugin: 'bettercallgpt', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+    expect(await ui.find({ text: BAND })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('goes away when the heartbeat stops', async ($: Engine, on: On) => {
+    const files = status(LIVE)
+    const { clock } = world(on, files)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    const mount = () =>
+      $.ui.mount({ plugin: 'bettercallgpt', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+    let ui = await mount()
+    expect(await ui.find({ text: BAND })).toBeDefined()
+    await ui.unmount()
+
+    await clock.advance(26_000) // `at` is now 31 s old: the voice process stopped writing
+    ui = await mount()
     expect(await ui.find({ text: BAND })).toBeUndefined()
     await ui.unmount()
   })

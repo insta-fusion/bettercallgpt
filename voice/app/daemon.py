@@ -13,7 +13,8 @@ snapshot after every phase change; `status` reads it. Its field names are a CONT
 any reader — `phase`, `pid`, `at`, `started_at`, `ended.reason`, `ended.ended_at`, `relay`,
 `mode`, `last_receipt.state`, `audio_ready`, `asleep`, `instance`,
 `session.{id,name,cwd}`, and the provider relay's `relay_count` and `reconnecting` (the phase
-stays `running` through a relay: only the voice provider's session is renewed).
+stays `running` through a relay: only the voice provider's session is renewed). While the phase
+is `running`, `at` is refreshed every STATUS_HEARTBEAT_S, so a stale `at` means a dead writer.
 
 **Secrets are never printed.** The start-up check asserts that credential env NAMES are
 present and says which are missing; it never echoes a value, and `voice.config.redact_text`
@@ -103,6 +104,10 @@ ROLLOVER_MINUTES_DEFAULT = "55"
 # seconds of the first stays quiet, so the operator hears the prompt once. Nothing is approved,
 # refused or delayed by it; it only decides whether the same notice is said twice.
 DIALOG_ECHO_S = 5.0
+# The status heartbeat: while the call runs, `at` in status.json is rewritten this often, so a
+# reader can tell a live call from a status a killed process left behind (the plugin's hooks
+# module takes a call as live only while `at` is under 30 s old). A cadence, not a decision.
+STATUS_HEARTBEAT_S = 10.0
 # b3: lifecycle-ports end
 
 
@@ -919,6 +924,7 @@ class VoiceDaemon:
         every = rollover_s()
         rollover = asyncio.ensure_future(self._rollover_watch(every)) if every > 0 else None
         self._rollover_task = rollover
+        heartbeat = asyncio.ensure_future(self._heartbeat(STATUS_HEARTBEAT_S))
         cap = session_max_s()
         try:
             if cap <= 0:
@@ -935,9 +941,30 @@ class VoiceDaemon:
             if not getattr(self, "_shut", False):
                 raise
         finally:
-            for task in (watch, rollover):
+            for task in (watch, rollover, heartbeat):
                 if task is not None:
                     task.cancel()
+
+    async def _heartbeat(self, every: float, wait_for: Any = asyncio.wait_for) -> None:
+        """Rewrite status.json with a fresh `at` every `every` seconds until the ending
+        starts (it stops at once then, on the stop event). Nothing else changes in the file,
+        so the control watcher's wake on this write reads the same control and permission
+        files and dedupes both: no work follows, no loop. `wait_for` is injected for tests."""
+        stopping = self._stopping()
+        while not getattr(self, "_shut", False):
+            try:
+                # b3: lifecycle-ports begin
+                await wait_for(stopping.wait(), every)
+                # b3: lifecycle-ports end
+                return                    # the ending started
+            except asyncio.TimeoutError:
+                pass
+            if getattr(self, "_shut", False):
+                return
+            try:
+                self.status.set()
+            except OSError as exc:        # a full disk must not end the call; the next beat retries
+                print(f"voice: status heartbeat failed: {exc.strerror or exc}", file=sys.stderr)
 
     async def _idle_watch(self, idle: float) -> None:
         """End the session after `idle` seconds in which neither side produced an event,

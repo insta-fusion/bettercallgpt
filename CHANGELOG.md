@@ -15,6 +15,9 @@ All notable changes to this project are documented here. Format follows
 - The voice process reads `permission.json` (deduped, never a previous call's) and announces it
   with no options, so a spoken word can never approve it. On an Orca pane the screen and the hook
   announce one prompt once.
+- While a call runs, the voice process refreshes `at` in `status.json` every 10 s. The hooks module
+  takes a call as live only while `at` is at most 30 s old, so a status left behind by a killed
+  process shows no band and gets no `permission.json`.
 
 ## [0.1.1] - 2026-10-02
 

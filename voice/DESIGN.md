@@ -80,7 +80,8 @@ open/close/reconnect (with the reconnect backoff and the provider-session rollov
 open a fresh provider session), the audio-lock bound and cadence, pane read, relay connect, process
 probe, the operator's session cap and idle close, the farewell bound, the dialog echo window
 (one permission prompt seen by the pane and reported by the hooks module is said once; it decides
-nothing else), and the portable file-watch cadence (`voice/platform.py`, Linux/Windows). The rollover's QUIET
+nothing else), the status heartbeat (`at` in status.json refreshed while the call runs, so a
+reader can tell a live call from a dead writer's leftover), and the portable file-watch cadence (`voice/platform.py`, Linux/Windows). The rollover's QUIET
 moment is not a timer: the loop reports it from events (`AgentLoop.until_quiet`: nobody speaking,
 no unanswered call or delegation, no open response, the speaker drained). Forbidden, and grep-tested
 (`test_core_timers.py`): fragment grace, confirmation windows, pause caps, response deadlines.
