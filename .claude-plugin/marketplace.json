@@ -1,6 +1,8 @@
 {
   "name": "bettercallgpt",
-  "owner": { "name": "StoryArcade" },
+  "owner": {
+    "name": "StoryArcade"
+  },
   "metadata": {
     "description": "Always-on, full-duplex voice for your Claude Code session.",
     "version": "0.1.1"
@@ -10,8 +12,21 @@
       "name": "bettercallgpt",
       "description": "Talk to this Claude Code session: /bettercallgpt:on, :off, :status.",
       "version": "0.1.1",
-      "author": { "name": "StoryArcade" },
-      "source": "./plugin"
+      "author": {
+        "name": "StoryArcade"
+      },
+      "source": "./plugin",
+      "homepage": "https://github.com/insta-fusion/bettercallgpt",
+      "repository": "https://github.com/insta-fusion/bettercallgpt",
+      "license": "MIT",
+      "keywords": [
+        "voice",
+        "realtime",
+        "speech",
+        "claude-code",
+        "macos"
+      ],
+      "category": "productivity"
     }
   ]
 }
