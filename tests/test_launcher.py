@@ -270,7 +270,8 @@ class PluginTests(unittest.TestCase):
         # No inline hooks, MCP servers, agents or anything else that runs on its own.
         self.assertLessEqual({"name", "version"}, set(manifest))
         self.assertLessEqual(set(manifest), {"name", "displayName", "version", "description",
-                                             "author", "homepage", "repository", "license", "keywords"})
+                                             "author", "homepage", "repository", "license", "keywords",
+                                             "documentationUrl", "supportUrl", "privacyPolicyUrl"})
 
     def test_controls_report_only_what_status_confirms(self):
         for name in ("off",):
