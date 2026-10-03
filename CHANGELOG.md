@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versions follow
 [SemVer](https://semver.org/) with a pre-1.0 caveat: minor bumps may break.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-02
 
 ### Added
 - The plugin carries one hooks module (`plugin/hooks/register.tsx`) that only observes. While this

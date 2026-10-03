@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bettercallgpt"
-version = "0.1.1"
+version = "0.2.0"
 description = "Talk to your coding agent: an always-on, full-duplex voice daemon that relays what you say into the agent session and reads its results aloud."
 requires-python = ">=3.12"
 license = { text = "MIT" }
