@@ -117,9 +117,18 @@ Voice Live (delete the `VOICE_LIVE_PROVIDER=gpt_live` line).
 - **It attaches only to the session that started it**, proven with zero keystrokes, and refuses
   anything else.
 - **The plugin is three small command files** ([plugin/commands/](plugin/commands/)) that only
-  you can run: no hooks, and the voice process runs only during a call. They run the tagged
+  you can run, and the voice process runs only during a call. They run the tagged
   release from GitHub through `uvx`; release tags are published as immutable GitHub releases,
   so a tag cannot be moved after release.
+- **Plus one hooks module that only observes** ([plugin/hooks/register.tsx](plugin/hooks/register.tsx)).
+  It never answers a permission prompt and never changes what one shows. While this session is
+  on a call it reads the call's `status.json`; when a permission prompt opens it writes
+  `permission.json` (the tool's name and one line: the Bash command, the file path or the MCP
+  tool's name) into that same per-session state directory (`0700`), so the voice can tell you
+  a prompt is waiting at your keyboard, in any terminal; and it draws one dim line above the
+  prompt. With no call it writes nothing. Turn it off with `"disableAllHooks": true` in your
+  Claude Code settings (that turns off all your hooks) or by disabling the plugin in `/plugin`.
+  Tested with Claude Code 2.1.287.
 
 ## Works with
 

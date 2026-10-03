@@ -18,5 +18,6 @@
   ],
   "documentationUrl": "https://github.com/insta-fusion/bettercallgpt/blob/main/docs/GUIDE.md",
   "supportUrl": "https://github.com/insta-fusion/bettercallgpt/issues",
-  "privacyPolicyUrl": "https://github.com/insta-fusion/bettercallgpt/blob/main/plugin/README.md#what-it-runs-sends-and-fetches"
+  "privacyPolicyUrl": "https://github.com/insta-fusion/bettercallgpt/blob/main/plugin/README.md#what-it-runs-sends-and-fetches",
+  "types": "./types/index.d.ts"
 }

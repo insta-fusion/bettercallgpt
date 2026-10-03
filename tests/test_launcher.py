@@ -252,26 +252,57 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(re.findall(r"\S!`", body), [], name)
         return front, body, rules, marks
 
-    def test_three_commands_no_hooks_only_the_user_runs_them(self):
+    def test_three_commands_only_the_user_runs_them(self):
         plugin = self.ROOT / "plugin"
-        self.assertFalse((plugin / "hooks").exists())
         self.assertEqual(sorted(p.stem for p in (plugin / "commands").iterdir()),
                          sorted(self.COMMANDS))
         for name in self.COMMANDS:
             self.assertIn("disable-model-invocation: true", self._command(name)[0], name)
 
+    # Claude Code lays editor types beside a plugin it loads from disk (git-ignored).
+    GENERATED = ("tsconfig.json", ".claude-plugin/types/")
+
     def test_the_plugin_is_exactly_these_files_and_manifest_keys(self):
         plugin = self.ROOT / "plugin"
-        files = sorted(p.relative_to(plugin).as_posix() for p in plugin.rglob("*")
-                       if p.is_file() and p.name != ".DS_Store")
+        files = sorted(rel for rel in (p.relative_to(plugin).as_posix() for p in plugin.rglob("*")
+                                       if p.is_file() and p.name != ".DS_Store")
+                       if not rel.startswith(self.GENERATED))
         self.assertEqual(files, [".claude-plugin/icon.png", ".claude-plugin/plugin.json", "README.md"]
-                         + [f"commands/{n}.md" for n in sorted(self.COMMANDS)])
+                         + [f"commands/{n}.md" for n in sorted(self.COMMANDS)]
+                         + ["hooks/hooks.json", "hooks/register.tsx", "tests/register.test.ts",
+                            "types/index.d.ts"])
         manifest = json.loads((plugin / ".claude-plugin" / "plugin.json").read_text())
-        # No inline hooks, MCP servers, agents or anything else that runs on its own.
+        # No inline hooks, MCP servers, agents or anything else that runs on its own; `types`
+        # is the hooks module's state contract (a .d.ts: declarations, no code).
         self.assertLessEqual({"name", "version"}, set(manifest))
         self.assertLessEqual(set(manifest), {"name", "displayName", "version", "description",
                                              "author", "homepage", "repository", "license", "keywords",
-                                             "documentationUrl", "supportUrl", "privacyPolicyUrl"})
+                                             "documentationUrl", "supportUrl", "privacyPolicyUrl",
+                                             "types"})
+        self.assertEqual(manifest["types"], "./types/index.d.ts")
+
+    def test_one_hooks_module_that_only_observes(self):
+        """README's promise, held on the source: one module; it hooks a permission prompt
+        only to observe it (never a decision), reads status.json, writes permission.json, and
+        reaches nothing else (no process, network, tool, model, prompt or message calls)."""
+        import re
+        hooks = self.ROOT / "plugin" / "hooks"
+        self.assertEqual(json.loads((hooks / "hooks.json").read_text()),
+                         {"modules": ["./register.tsx"]})
+        source = (hooks / "register.tsx").read_text()
+        self.assertEqual(set(re.findall(r"\bon\('([^']+)'", source)),
+                         {"classic.PermissionRequest", "session.start", "ui.render"})
+        for word in ("decision", "behavior", "updatedInput", "updatedPermissions", "deny",
+                     "block", "interrupt", "import("):
+            self.assertNotIn(word, source, word)
+        calls = set(re.findall(r"\$\.([a-z]+\.[a-zA-Z]+)\(", source))
+        self.assertLessEqual(calls, {"env.get", "fs.exists", "fs.read", "fs.write", "clock.now",
+                                     "clock.every", "session.id", "ui.resolve"})
+        self.assertEqual(re.findall(r"\$\.fs\.write\(`\$\{dir\}/([^`]+)`", source),
+                         ["permission.json"])
+        self.assertEqual(source.count("$.fs.write("), 1)
+        self.assertEqual(re.findall(r"\$\.fs\.read\(([^)]*)\)", source), ["statusPath"])
+        self.assertIn("const statusPath = `${dir}/status.json`", source)
 
     def test_controls_report_only_what_status_confirms(self):
         for name in ("off",):

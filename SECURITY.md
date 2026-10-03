@@ -14,6 +14,10 @@ acknowledgment within a week.
 - **Speech becoming consent.** Approvals are keyboard-only (the broker runs
   terminal-only); any path where a spoken utterance approves a permission prompt or an
   irreversible effect is a vulnerability.
+- **The hooks module answering a prompt.** `plugin/hooks/register.tsx` observes
+  `classic.PermissionRequest` only to write `permission.json` and always returns what the rest
+  of the chain returned. Any path where it answers, alters or hides a permission prompt is a
+  vulnerability.
 - **Relay to the wrong session.** The daemon attaches only to the session that launched it,
   with zero keystrokes, proven one of two ways. Without a screen (any terminal): it descends
   from that session's `claude` process, the session's own transcript holds exactly one fresh
@@ -50,6 +54,9 @@ acknowledgment within a week.
 
 - The state directory (`~/.local/state/bettercallgpt/<session>/`) holds the status snapshot
   and the conversation ledger, which records what was relayed. It stays on your machine.
+  During a call the plugin's hooks module also writes `permission.json` there: the newest
+  permission prompt's tool name and a one-line summary (a Bash command, a file path or an MCP
+  tool's name), which the voice process reads to tell you a prompt is waiting.
 - For launches without `--terminal`, each bound nonce is claimed once as an empty file under
   `~/.local/state/voice-launch-claims/<session>/` (a fixed location, whatever the state
   directory setting).
