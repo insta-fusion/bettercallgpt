@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versions follow
 [SemVer](https://semver.org/) with a pre-1.0 caveat: minor bumps may break.
 
+## [0.2.0] - 2026-10-02
+
+### Added
+- The plugin carries one hooks module (`plugin/hooks/register.tsx`) that only observes. While this
+  session is on a call it writes `permission.json` into the call's own state directory when a
+  permission prompt opens, and the call tells you a prompt is waiting at your keyboard, in any
+  terminal, not only in an Orca pane. It also draws one dim line above the prompt during a call.
+  It never answers or changes a prompt; turn it off with `disableAllHooks` or `/plugin`.
+- The voice process reads `permission.json` (deduped, never a previous call's) and announces it
+  with no options, so a spoken word can never approve it. On an Orca pane the screen and the hook
+  announce one prompt once.
+- While a call runs, the voice process refreshes `at` in `status.json` every 10 s. The hooks module
+  takes a call as live only while `at` is at most 30 s old, so a status left behind by a killed
+  process shows no band and gets no `permission.json`.
+
 ## [0.1.1] - 2026-10-02
 
 ### Added

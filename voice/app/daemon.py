@@ -13,7 +13,8 @@ snapshot after every phase change; `status` reads it. Its field names are a CONT
 any reader — `phase`, `pid`, `at`, `started_at`, `ended.reason`, `ended.ended_at`, `relay`,
 `mode`, `last_receipt.state`, `audio_ready`, `asleep`, `instance`,
 `session.{id,name,cwd}`, and the provider relay's `relay_count` and `reconnecting` (the phase
-stays `running` through a relay: only the voice provider's session is renewed).
+stays `running` through a relay: only the voice provider's session is renewed). While the phase
+is `running`, `at` is refreshed every STATUS_HEARTBEAT_S, so a stale `at` means a dead writer.
 
 **Secrets are never printed.** The start-up check asserts that credential env NAMES are
 present and says which are missing; it never echoes a value, and `voice.config.redact_text`
@@ -24,6 +25,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import signal
 import sys
@@ -97,6 +99,15 @@ ROLLOVER_MINUTES_NAME = "VOICE_SESSION_ROLLOVER_MINUTES"
 # gap. A SIZE (~30 s of 20 ms blocks), not a wait: past it the oldest blocks go first.
 MIC_GAP_BLOCKS = 1500
 ROLLOVER_MINUTES_DEFAULT = "55"
+# One permission prompt, two witnesses on an Orca call: the pane reads it off the screen and the
+# plugin's hooks module reports it (permission.json). Whichever speaks second within this many
+# seconds of the first stays quiet, so the operator hears the prompt once. Nothing is approved,
+# refused or delayed by it; it only decides whether the same notice is said twice.
+DIALOG_ECHO_S = 5.0
+# The status heartbeat: while the call runs, `at` in status.json is rewritten this often, so a
+# reader can tell a live call from a status a killed process left behind (the plugin's hooks
+# module takes a call as live only while `at` is under 30 s old). A cadence, not a decision.
+STATUS_HEARTBEAT_S = 10.0
 # b3: lifecycle-ports end
 
 
@@ -266,6 +277,11 @@ def effect_vocabulary() -> frozenset[str]:
 
 CONTROL_NAME = "control.json"
 CONTROL_COMMANDS = ("stop",)
+# Written by the plugin's hooks module (plugin/hooks/register.tsx) when a permission prompt opens
+# in this session while its call is live: {"at": <epoch seconds>, "tool": ..., "summary": ...}.
+# Read and announced, never answered: approvals stay on the keyboard (DESIGN.md §Consent).
+PERMISSION_NAME = "permission.json"
+PERMISSION_TEXT_MAX = 300           # characters of `tool` / `summary` kept: a length, not a time
 
 
 class ControlWatcher:
@@ -277,9 +293,16 @@ class ControlWatcher:
     awaited by a task; a watch that exposes an fd is handed to `loop.add_reader` directly.
     `open_watch` is injected: a test supplies a fake that fires on demand, which is why no
     test needs a real filesystem event.
+
+    With `on_permission`, the same watcher also reads `permission.json` (see PERMISSION_NAME).
+    That file is the exception to the rule above: the hooks module rewrites it IN PLACE (one
+    inode, truncate and write: measured with Claude Code 2.1.287's `$.fs.write`), which a
+    kqueue watch on the directory never sees. So the file itself is watched too, from the
+    moment it exists, and followed when its inode changes.
     """
 
-    def __init__(self, directory: Path, on_command, *, open_watch=None) -> None:
+    def __init__(self, directory: Path, on_command, *, open_watch=None,
+                 on_permission=None, since: float | None = None) -> None:
         self.directory = directory
         self._on_command = on_command
         self._open_watch = open_watch or _directory_watch
@@ -287,6 +310,13 @@ class ControlWatcher:
         self._watch: Any = None
         self._loop: Any = None
         self._seen_at: float | None = None
+        self._on_permission = on_permission
+        # A report older than this call (its status `started_at`) is a previous call's.
+        self._since = since
+        self._permission_seen_at: float | None = None
+        self._file_watch: Any = None
+        self._file_task: Any = None
+        self._file_ino: int | None = None
 
     def start(self, loop: Any) -> None:
         voice_platform.private_dir(self.directory)
@@ -311,6 +341,7 @@ class ControlWatcher:
             loop.add_reader(self._watch.fileno(), self._wake)
         else:
             self._task = loop.create_task(self._pump())
+        self._follow_permission()
 
     async def _pump(self) -> None:
         while self._watch is not None:
@@ -321,9 +352,100 @@ class ControlWatcher:
         if self._watch is not None and not drained:
             self._watch.drain()
         command = self.read_command()
-        if command is None:
+        if command is not None:
+            self._loop.create_task(self._on_command(command))
+        self._check_permission()
+
+    # -- permission.json ---------------------------------------------------------------
+
+    def _follow_permission(self) -> None:
+        """Watch permission.json itself once it exists; again when its inode changed (the
+        file was deleted and written anew). The directory watch alone sees it appear."""
+        if self._on_permission is None or self._loop is None or self._watch is None:
             return
-        self._loop.create_task(self._on_command(command))
+        path = self.directory / PERMISSION_NAME
+        try:
+            ino = path.stat().st_ino
+        except OSError:
+            return
+        if self._file_watch is not None and ino == self._file_ino:
+            return
+        self._close_file_watch()
+        watch = self._open_watch(path)
+        if watch is None:
+            return
+        self._file_watch, self._file_ino = watch, ino
+        if hasattr(watch, "fileno"):
+            self._loop.add_reader(watch.fileno(), self._permission_wake)
+        else:
+            self._file_task = self._loop.create_task(self._pump_file(watch))
+
+    async def _pump_file(self, watch: Any) -> None:
+        while self._file_watch is watch:
+            await watch.wait()
+            self._permission_wake(drained=True)
+
+    def _permission_wake(self, drained: bool = False) -> None:
+        if self._file_watch is not None and not drained:
+            self._file_watch.drain()
+        self._check_permission()
+
+    def _check_permission(self) -> None:
+        if self._on_permission is None:
+            return
+        # Watch first, then read: a write that lands between the two is either in what is
+        # read now or wakes the file watch again.
+        self._follow_permission()
+        event = self.read_permission()
+        if event is None:
+            return
+        try:
+            self._on_permission(event)
+        except Exception as exc:          # a notice that failed must not end the watch
+            print(f"voice: permission notice failed: {voice_config.redact_text(str(exc))}",
+                  file=sys.stderr)
+
+    def read_permission(self) -> dict[str, Any] | None:
+        """The permission prompt the hooks module reported, once; None when nothing is new.
+
+        `at` is the de-duplicator, as for commands: both watches can fire for one write. A
+        report older than this call is a previous call's. A file caught mid-write (it is
+        written in place, not atomically) does not parse and is not marked seen: the rest of
+        that write wakes the file watch and it is read again then.
+        """
+        try:
+            data = json.loads((self.directory / PERMISSION_NAME).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        at, tool, summary = data.get("at"), data.get("tool"), data.get("summary")
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at):
+            return None
+        if not isinstance(tool, str) or not _one_line(tool):
+            return None
+        if self._since is not None and at < self._since:
+            return None
+        if at == self._permission_seen_at:
+            return None
+        self._permission_seen_at = at
+        return {"at": float(at), "tool": _one_line(tool),
+                "summary": _one_line(summary) if isinstance(summary, str) else ""}
+
+    def _close_file_watch(self) -> None:
+        watch, self._file_watch = self._file_watch, None
+        task, self._file_task = self._file_task, None
+        self._file_ino = None
+        if task is not None:
+            task.cancel()
+        if watch is None:
+            return
+        if self._loop is not None and hasattr(watch, "fileno"):
+            try:
+                self._loop.remove_reader(watch.fileno())
+            except Exception:
+                pass
+        watch.close()
 
     def read_command(self) -> str | None:
         """The pending command, or None. A command is consumed ONCE.
@@ -346,6 +468,7 @@ class ControlWatcher:
         return command
 
     def close(self) -> None:
+        self._close_file_watch()
         watch, self._watch = self._watch, None
         task, self._task = self._task, None
         if task is not None:
@@ -358,6 +481,13 @@ class ControlWatcher:
             except Exception:
                 pass
         watch.close()
+
+
+def _one_line(text: str) -> str:
+    """Text from permission.json as one short line: whitespace and control characters
+    collapsed, cut at PERMISSION_TEXT_MAX. It is spoken about, never parsed or run."""
+    line = " ".join("".join(c if c.isprintable() else " " for c in text).split())
+    return line if len(line) <= PERMISSION_TEXT_MAX else line[:PERMISSION_TEXT_MAX - 1] + "…"
 
 
 def _transcript_wake(path: Path) -> Any:
@@ -466,14 +596,17 @@ def build_claude_code_backend(*, binding: dict, session_id: str, ledger: Any,
                               connect_bound_s: float = RELAY_CONNECT_BOUND_S,
                               start_granularity_s: float = PS_START_GRANULARITY_S,
                               ps_bound_s: float = PS_PROBE_BOUND_S,
+                              dialog_echo_s: float = DIALOG_ECHO_S,
                               now=time.time, env: dict | None = None,
                               on_qualified: Any = None) -> Any:
     """Assemble the adapter over a PROVEN binding. Every port comes from this module.
 
-    The five injected ports are the daemon's whole contribution: the relay's connect bound, the
+    The injected ports are the daemon's whole contribution: the relay's connect bound, the
     `ps` probe bound, the `ps` start-time granularity the identity re-check compares against,
-    the pane's read bound (already spent inside `prove_ownership`), and the clock. The components themselves
-    are the backend worker's and are constructed, never reimplemented, here.
+    the pane's read bound (already spent inside `prove_ownership`), the dialog echo window
+    (one permission prompt seen by the pane and by the hooks module is said once), and the
+    clock. The components themselves are the backend worker's and are constructed, never
+    reimplemented, here.
     """
     from voice.backend.claude_code.adapter import ClaudeCodeBackend
     from voice.backend.claude_code.relay import RelayActuator, relay_binding, relay_env
@@ -500,7 +633,8 @@ def build_claude_code_backend(*, binding: dict, session_id: str, ledger: Any,
     # (4,079 observations at one start, measured 2026-09-20) on top of decoding it all.
     tailer.bootstrap()
     return ClaudeCodeBackend(pane=pane, tailer=tailer, relay=relay, binding=bound,
-                            on_qualified=on_qualified, wake=_transcript_wake(Path(transcript)))
+                            on_qualified=on_qualified, wake=_transcript_wake(Path(transcript)),
+                            now=now, echo_s=dialog_echo_s)
 
 
 class VoiceDaemon:
@@ -685,6 +819,16 @@ class VoiceDaemon:
 
     # ------------------------------------------------------------------ host callbacks
 
+    def on_permission(self, event: dict[str, Any]) -> None:
+        """A permission prompt this session's hooks module saw open (permission.json). Said,
+        never answered: no backend has a key-press surface and the broker is terminal-only
+        (DESIGN.md §Consent). A backend that cannot announce one ignores it."""
+        announce = getattr(self.backend, "announce_permission", None)
+        if announce is None or getattr(self, "_shut", False):
+            return
+        self._spawn(announce(tool=event["tool"], summary=event["summary"], at=event["at"]),
+                    "permission notice")
+
     async def on_control(self, command: str) -> None:
         """A command from the CLI -- or from the backend, when the operator asked it by voice
         to stop: there is no spoken control path of its own. On, status, off: nothing else."""
@@ -723,7 +867,9 @@ class VoiceDaemon:
                                **capture_kwargs)
         self.capture.start()
         self.control = ControlWatcher(self.dir, self.on_control,
-                                      open_watch=self._open_watch)
+                                      open_watch=self._open_watch,
+                                      on_permission=self.on_permission,
+                                      since=self.status.data.get("started_at"))
         self.control.start(asyncio.get_running_loop())
         self.status.set(audio_ready=True, phase="connecting")
         session = self.session
@@ -778,6 +924,7 @@ class VoiceDaemon:
         every = rollover_s()
         rollover = asyncio.ensure_future(self._rollover_watch(every)) if every > 0 else None
         self._rollover_task = rollover
+        heartbeat = asyncio.ensure_future(self._heartbeat(STATUS_HEARTBEAT_S))
         cap = session_max_s()
         try:
             if cap <= 0:
@@ -794,9 +941,30 @@ class VoiceDaemon:
             if not getattr(self, "_shut", False):
                 raise
         finally:
-            for task in (watch, rollover):
+            for task in (watch, rollover, heartbeat):
                 if task is not None:
                     task.cancel()
+
+    async def _heartbeat(self, every: float, wait_for: Any = asyncio.wait_for) -> None:
+        """Rewrite status.json with a fresh `at` every `every` seconds until the ending
+        starts (it stops at once then, on the stop event). Nothing else changes in the file,
+        so the control watcher's wake on this write reads the same control and permission
+        files and dedupes both: no work follows, no loop. `wait_for` is injected for tests."""
+        stopping = self._stopping()
+        while not getattr(self, "_shut", False):
+            try:
+                # b3: lifecycle-ports begin
+                await wait_for(stopping.wait(), every)
+                # b3: lifecycle-ports end
+                return                    # the ending started
+            except asyncio.TimeoutError:
+                pass
+            if getattr(self, "_shut", False):
+                return
+            try:
+                self.status.set()
+            except OSError as exc:        # a full disk must not end the call; the next beat retries
+                print(f"voice: status heartbeat failed: {exc.strerror or exc}", file=sys.stderr)
 
     async def _idle_watch(self, idle: float) -> None:
         """End the session after `idle` seconds in which neither side produced an event,
