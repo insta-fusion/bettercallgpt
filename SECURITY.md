@@ -14,9 +14,9 @@ acknowledgment within a week.
 - **Speech becoming consent.** Approvals are keyboard-only (the broker runs
   terminal-only); any path where a spoken utterance approves a permission prompt or an
   irreversible effect is a vulnerability.
-- **The hooks module answering a prompt.** `plugin/hooks/register.tsx` observes
+- **The hooks module answering a request.** `plugin/hooks/register.tsx` observes
   `classic.PermissionRequest` only to write `permission.json` and always returns what the rest
-  of the chain returned. Any path where it answers, alters or hides a permission prompt is a
+  of the chain returned. Any path where it answers, alters or hides a permission request is a
   vulnerability.
 - **Relay to the wrong session.** The daemon attaches only to the session that launched it,
   with zero keystrokes, proven one of two ways. Without a screen (any terminal): it descends
@@ -55,13 +55,16 @@ acknowledgment within a week.
 - The state directory (`~/.local/state/bettercallgpt/<session>/`) holds the status snapshot
   and the conversation ledger, which records what was relayed. It stays on your machine.
   During a call the plugin's hooks module also writes `permission.json` there: the newest
-  permission prompt's tool name and a one-line summary (a Bash command, a file path or an MCP
-  tool's name), which the voice process reads to tell you a prompt is waiting.
+  permission request's tool name and a one-line summary (a Bash command, a file path or an MCP
+  tool's name, left out when longer than 2000 characters) and the call's instance id, which the
+  voice process reads to say what Claude is asking for. Known credential values are masked in the
+  whole summary before it is shortened for speech.
 - For launches without `--terminal`, each bound nonce is claimed once as an empty file under
   `~/.local/state/voice-launch-claims/<session>/` (a fixed location, whatever the state
   directory setting).
-- The voice provider you configure (Azure or OpenAI) receives your microphone audio **and**
-  the text the voice model needs to talk about the work: what you type into the session,
-  the agent's progress and results, and permission prompts (so it can tell you one is
-  waiting). Treat the provider as seeing what your terminal shows.
+- The voice provider you configure (Azure Voice Live, the Azure GPT-Live API, or OpenAI
+  Realtime, experimental) receives your microphone audio **and** the text the voice model needs
+  to talk about the work: what you type into the session, the agent's progress and results,
+  and permission requests (a one-line summary, so it can tell you what Claude is asking for).
+  Treat the provider as seeing what your terminal shows.
 - The test fixtures are recorded wire sessions with personal paths removed.

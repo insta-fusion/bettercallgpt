@@ -36,9 +36,11 @@ the call fails, it falls back to reading the pane. Otherwise (no
 `orca` CLI, a stale handle, tmux, a headless session) the start proceeds exactly as above.
 `bettercallgpt doctor` shows it as `orca_pane`; export `BETTERCALLGPT_ORCA_PANE=0` to skip it.
 Approvals are always answered on the keyboard. In any terminal (and the desktop Code tab),
-the plugin's hooks module also tells the call when a permission prompt opens, by writing
-`permission.json` into the call's state directory; on an Orca pane the prompt is still said
-once. The session id comes from
+the plugin's hooks module also tells the call when Claude makes a permission request, by writing
+`permission.json` into the call's state directory. It is a request, not proof a dialog is on
+screen: another hook or Claude Code may decide it, and sandbox network prompts are not covered.
+On an Orca pane, when the pane already announced a dialog showing the same tool and command,
+the request is not said twice (best effort). The session id comes from
 `CLAUDE_CODE_SESSION_ID` (`VOICE_SESSION_ID` overrides it). The controls address a session by id: from the agent's own Bash
 tool the id is already in the environment, so the agent (or you, by asking it) runs
 

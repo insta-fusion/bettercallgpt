@@ -7,14 +7,20 @@ All notable changes to this project are documented here. Format follows
 ## [0.2.0] - 2026-10-02
 
 ### Added
-- The plugin carries one hooks module (`plugin/hooks/register.tsx`) that only observes. While this
-  session is on a call it writes `permission.json` into the call's own state directory when a
-  permission prompt opens, and the call tells you a prompt is waiting at your keyboard, in any
-  terminal, not only in an Orca pane. It also draws one dim line above the prompt during a call.
-  It never answers or changes a prompt; turn it off with `disableAllHooks` or `/plugin`.
-- The voice process reads `permission.json` (deduped, never a previous call's) and announces it
-  with no options, so a spoken word can never approve it. On an Orca pane the screen and the hook
-  announce one prompt once.
+- The plugin carries one hooks module (`plugin/hooks/register.tsx`, needs Claude Code 2.1.287+)
+  that only observes. While this session is on a call it writes `permission.json` into the call's
+  own state directory when Claude makes a permission request, and the call says what Claude is
+  asking for ("Claude is asking to use Bash: … — answer on your keyboard"), in any terminal, not
+  only in an Orca pane. It also draws one dim line above the prompt during a call, under what other
+  mods draw there. It checks for a call every 2 seconds in every session where the plugin is loaded
+  (local files and three env vars, no network). It never answers or changes a request; turn it off
+  with `disableAllHooks` or `/plugin`.
+- The voice process reads `permission.json` (deduped, only this call's instance, never a previous
+  call's) and announces it with no options, so a spoken word can never approve it. Credentials are
+  masked in the whole summary before it is shortened; a summary over 2000 characters is left out.
+  On an Orca pane, a request the screen already announced (same tool and command) is said once.
+- Disclosure: the plugin README lists OpenAI Realtime (experimental) among the voice services, and
+  says a one-line summary of each permission request reaches the selected voice service.
 - While a call runs, the voice process refreshes `at` in `status.json` every 10 s. The hooks module
   takes a call as live only while `at` is at most 30 s old, so a status left behind by a killed
   process shows no band and gets no `permission.json`.

@@ -87,12 +87,12 @@ marketplace：`/plugin marketplace add insta-fusion/bettercallgpt`，再 `/plugi
 
 ## 安全设计
 
-- **口头说“同意”批准不了任何操作。** 语音回答不了权限确认，只能你在键盘上回答。（AI 本来就被允许做的事，仍由你的 Claude Code 权限设置决定。）
+- **口头说“同意”批准不了任何操作。** 语音回答不了权限请求，只能你在键盘上回答。（AI 本来就被允许做的事，仍由你的 Claude Code 权限设置决定。）
 - **启动前会先问你**——除非 Claude Code 处于 auto / bypass 模式，或有匹配的白名单规则。别把它加进白名单（不要 `bettercallgpt` 通配，也不要宽泛的 `uvx` 规则）：它会打开麦克风和付费连接。
-- **什么会离开你的电脑：** 你的麦克风音频，以及语音需要用来聊工作的内容（你的提示、AI 的进度和结果、权限提示），会发给你配置的语音服务。通话记录留在本地（`0600`）。详见 [SECURITY.md](SECURITY.md#privacy-notes)。
+- **什么会离开你的电脑：** 你的麦克风音频，以及语音需要用来聊工作的内容（你的提示、AI 的进度和结果、每个权限请求的一行摘要：工具名加命令或文件路径），会发给你配置的语音服务：Azure Voice Live、Azure GPT-Live API，或 OpenAI Realtime（实验性）。通话记录留在本地（`0600`）。详见 [SECURITY.md](SECURITY.md#privacy-notes)。
 - **只接入启动它的那个会话**，无需按键即可证明归属，其他一律拒绝。
 - **插件就是三个小命令文件**（[plugin/commands/](plugin/commands/)），只有你能运行，语音进程只在通话期间运行。它们通过 `uvx` 运行 GitHub 上打了标签的发布版本；发布版本用不可更改的 GitHub release，标签发布后不能再改指。
-- **外加一个只观察的 hooks 模块**（[plugin/hooks/register.tsx](plugin/hooks/register.tsx)）。它从不回答权限确认，也不改动确认框显示的内容。只在这个会话通话期间：读取本次通话的 `status.json`；弹出权限确认时，把 `permission.json`（工具名和一行摘要：Bash 命令、文件路径或 MCP 工具名）写进同一个按会话划分的状态目录（`0700`），让语音提醒你去键盘上确认，任何终端都行；并在输入框上方显示一行灰色提示。不在通话时什么都不写。关闭方法：在 Claude Code 设置里加 `"disableAllHooks": true`（会关掉你所有的 hook），或在 `/plugin` 里停用这个插件。已在 Claude Code 2.1.287 上测试。
+- **外加一个只观察的 hooks 模块**（[plugin/hooks/register.tsx](plugin/hooks/register.tsx)）。它从不回答权限请求，也不改动确认框显示的内容。在加载了这个插件的每个会话里，它每 2 秒检查一次这个会话是否在通话：读取 `VOICE_LISTEN_STATE_DIR`、`XDG_STATE_HOME`、`HOME` 和本次通话的 `status.json`，不联网。通话期间 Claude 发起权限请求时，它把 `permission.json`（工具名和一行摘要：Bash 命令、文件路径或 MCP 工具名）写进同一个按会话划分的状态目录（`0700`），让语音告诉你 Claude 在请求什么、请你在键盘上回答，任何终端都行。这类请求也可能随后被别的 hook 或 Claude Code 自己决定、根本不弹框；沙箱的网络确认不在其中。通话期间它还在输入框上方显示一行灰色提示。不在通话时什么都不写。关闭方法：在 Claude Code 设置里加 `"disableAllHooks": true`（会关掉你所有的 hook），或在 `/plugin` 里停用这个插件。hooks 模块需要 Claude Code 2.1.287 及以上（已在 2.1.287 上测试）。
 
 ## 支持范围
 

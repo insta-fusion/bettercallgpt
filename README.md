@@ -104,15 +104,17 @@ Voice Live (delete the `VOICE_LIVE_PROVIDER=gpt_live` line).
 
 ## Safe by design
 
-- **A spoken “yes” never approves anything.** The voice cannot answer a permission prompt; you
+- **A spoken “yes” never approves anything.** The voice cannot answer a permission request; you
   answer it on the keyboard. (What your agent may already do without asking is still up to your
   Claude Code permission settings.)
 - **The start asks you first** — unless Claude Code runs in auto or bypass mode, or an allow rule
   matches it. Don't allow-list it (no `bettercallgpt` wildcard, no broad
   `uvx` rule): it opens your microphone and a paid connection.
 - **What leaves your machine:** your microphone audio, and what the voice needs to talk about the
-  work (your prompts, the agent's progress and results, permission prompts), go to the voice
-  provider you configure. The call ledger stays local (`0600`). See
+  work (your prompts, the agent's progress and results, a one-line summary of each permission
+  request: tool name and command or file path), go to the voice provider you configure: Azure
+  Voice Live, the Azure GPT-Live API, or OpenAI Realtime (experimental). The call ledger stays
+  local (`0600`). See
   [SECURITY.md › Privacy notes](SECURITY.md#privacy-notes).
 - **It attaches only to the session that started it**, proven with zero keystrokes, and refuses
   anything else.
@@ -121,14 +123,18 @@ Voice Live (delete the `VOICE_LIVE_PROVIDER=gpt_live` line).
   release from GitHub through `uvx`; release tags are published as immutable GitHub releases,
   so a tag cannot be moved after release.
 - **Plus one hooks module that only observes** ([plugin/hooks/register.tsx](plugin/hooks/register.tsx)).
-  It never answers a permission prompt and never changes what one shows. While this session is
-  on a call it reads the call's `status.json`; when a permission prompt opens it writes
-  `permission.json` (the tool's name and one line: the Bash command, the file path or the MCP
-  tool's name) into that same per-session state directory (`0700`), so the voice can tell you
-  a prompt is waiting at your keyboard, in any terminal; and it draws one dim line above the
-  prompt. With no call it writes nothing. Turn it off with `"disableAllHooks": true` in your
-  Claude Code settings (that turns off all your hooks) or by disabling the plugin in `/plugin`.
-  Tested with Claude Code 2.1.287.
+  It never answers a permission request and never changes what a dialog shows. In every session
+  where the plugin is loaded it checks every 2 seconds whether this session is on a call (it reads
+  `VOICE_LISTEN_STATE_DIR`, `XDG_STATE_HOME`, `HOME` and the call's `status.json`; no network).
+  During a call, when Claude makes a permission request, it writes `permission.json` (the tool's
+  name and one line: the Bash command, the file path or the MCP tool's name) into that same
+  per-session state directory (`0700`), so the voice can say what Claude is asking for and that
+  you answer on your keyboard, in any terminal. A request can also be one another hook or Claude
+  Code then decides without a dialog; sandbox network prompts are not covered. It draws one dim
+  line above the prompt during a call. With no call it writes nothing. Turn it off with
+  `"disableAllHooks": true` in your Claude Code settings (that turns off all your hooks) or by
+  disabling the plugin in `/plugin`. The hooks module needs Claude Code 2.1.287+ (tested with
+  2.1.287).
 
 ## Works with
 

@@ -50,6 +50,26 @@ jobs:
         # the one live smoke test is opt-in (VOICE_LIVE_TESTS=1), never set here
         run: python -m unittest discover -s voice/tests -t . -p 'test_*.py'
 
+  plugin:
+    # The Claude Code plugin's hooks module: strict manifest validation and its own tests, run by
+    # Claude Code itself. Mods are on by default from 2.1.287, so no setting or variable enables
+    # them; the tests run locally against the engine and need no account or network model call.
+    name: plugin validates & mod tests pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DISABLE_AUTOUPDATER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Claude Code 2.1.287 (the oldest build the hooks module supports)
+        run: npm install -g @anthropic-ai/claude-code@2.1.287 && claude --version
+      - name: validate (strict)
+        run: claude plugin validate --strict plugin
+      - name: mod tests
+        run: claude plugin test plugin
+
   wheel:
     name: wheel installs & bettercallgpt answers
     runs-on: ubuntu-latest

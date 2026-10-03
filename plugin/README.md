@@ -15,19 +15,26 @@ your keyboard. macOS only.
 - **Runs:** the `bettercallgpt` command from this repository's tagged release, through `uvx`, as a local
   process that lives only during a call.
 - **Sends:** your microphone audio and the text of the call to the realtime voice service you configure,
-  using your own key: Azure OpenAI GPT Realtime through Azure Voice Live (default) or the Azure GPT-Live API.
-  It goes nowhere else. Nothing is sent when no call is running.
+  using your own key: Azure OpenAI GPT Realtime through Azure Voice Live (default), the Azure GPT-Live API,
+  or the OpenAI Realtime API (experimental). When Claude makes a permission request during a call, a
+  one-line summary of it (the tool's name and the Bash command, file path or MCP tool name) is spoken, so
+  it is sent to that voice service too. It goes nowhere else. Nothing is sent when no call is running.
 - **Reads:** your key from `~/.config/bettercallgpt/.env`, which you fill yourself; setup never asks for it.
   It reads this session's own transcript and terminal pane to relay results and to notice permission prompts.
 - **Writes:** a conversation ledger and status files for each call in a per-user state directory
   that only you can open (0700). They stay on your machine.
 - **Fetches:** the tagged release from GitHub, on first use.
-- **Mod (one hooks module, `hooks/register.tsx`):** runs inside Claude Code and only observes. While
-  this session is on a call it reads the call's `status.json`, writes `permission.json` (the tool's
-  name and a one-line summary) into that same state directory when a permission prompt opens, so the
-  call can say a prompt is waiting, and draws one dim line above the prompt. It never answers or
-  changes a prompt and sends nothing anywhere; with no call it writes nothing. Turn it off with
-  `"disableAllHooks": true` in your settings, or disable the plugin.
+- **Mod (one hooks module, `hooks/register.tsx`; the hooks module needs Claude Code 2.1.287+, tested
+  with 2.1.287):** runs inside Claude Code and only observes. In every session where the plugin is
+  loaded it checks every 2 seconds whether this session is on a call: it reads `VOICE_LISTEN_STATE_DIR`,
+  `XDG_STATE_HOME` and `HOME` to find the state directory and reads `status.json` there; no network.
+  During a call, when Claude makes a permission request, it writes `permission.json` (the tool's name
+  and a one-line summary) into that state directory, so the call can say what Claude is asking for.
+  That can include a request another hook or Claude Code then decides without asking you; sandbox
+  network prompts are not covered. It draws one dim line above the prompt during a call, under what
+  other mods draw there. It never answers or changes a request and sends nothing anywhere; with no
+  call it writes nothing. Turn it off with `"disableAllHooks": true` in your settings, or disable
+  the plugin.
 
 ## Where it works
 
