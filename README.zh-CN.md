@@ -61,9 +61,10 @@ Claude Code 插件、建一个空的 key 文件、再跑一遍自检。你自己
 1. **把 key 粘进它告诉你的那个文件**（Azure Voice Live；OpenAI Realtime 还在实验阶段）。安装过程不会问你要 key——也别把 key 发到聊天里。
 2. **在新开的 Claude Code 会话里输入 `/bettercallgpt:on`**，批准一次启动。听到上扬的提示音，就通上了。
 
-bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户。不想用 skill？先装好 [uv](https://docs.astral.sh/uv/)，再输入
-`/plugin marketplace add insta-fusion/bettercallgpt` 和 `/plugin install bettercallgpt@bettercallgpt`，
-照着 [`.env.example`](.env.example) 填好 `~/.config/bettercallgpt/.env`，再 `/bettercallgpt:on`。
+bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户。不想用 skill？它已上架 Claude Code 官方插件目录：先装好
+[uv](https://docs.astral.sh/uv/)，再输入 `/plugin install better-call-gpt@anthropic-plugin-directory`，
+照着 [`.env.example`](.env.example) 填好 `~/.config/bettercallgpt/.env`，再 `/bettercallgpt:on`。也可以用本仓库自己的
+marketplace：`/plugin marketplace add insta-fusion/bettercallgpt`，再 `/plugin install bettercallgpt@bettercallgpt`。
 
 ## 外放还是耳机？选语音模型
 
