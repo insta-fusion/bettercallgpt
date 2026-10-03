@@ -298,7 +298,7 @@ class PluginTests(unittest.TestCase):
         calls = set(re.findall(r"\$\.([a-z]+\.[a-zA-Z]+)\(", source))
         self.assertLessEqual(calls, {"env.get", "fs.exists", "fs.read", "fs.write", "clock.now",
                                      "clock.every", "session.id", "ui.resolve"})
-        self.assertEqual(re.findall(r"\$\.fs\.write\(`\$\{dir\}/([^`]+)`", source),
+        self.assertEqual(re.findall(r"\$\.fs\.write\(`\$\{call\.dir\}/([^`]+)`", source),
                          ["permission.json"])
         self.assertEqual(source.count("$.fs.write("), 1)
         self.assertEqual(re.findall(r"\$\.fs\.read\(([^)]*)\)", source), ["statusPath"])

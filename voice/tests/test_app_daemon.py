@@ -837,6 +837,36 @@ class PermissionChannel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(event["summary"]), daemon_mod.PERMISSION_TEXT_MAX)
         self.assertEqual(event["at"], 1004.0)
 
+    def test_a_credential_across_the_cut_is_masked_whole_first(self):
+        """Masking matches whole known values, so a cut made first could leave a credential's
+        prefix it no longer recognises. The text is masked whole, then cut."""
+        secret = "sk-test-SECRET-0123456789abcdef"
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE)
+        with mock.patch.dict(os.environ, {"VOICE_TEST_API_KEY": secret}):
+            for cut in (daemon_mod.PERMISSION_TEXT_MAX, 300):   # the cut now, and the old one
+                summary = "x" * (cut - 10) + secret + " https://example.com"   # across the cut
+                self._write({"at": 1010 + cut, "tool": "Bash", "summary": summary})
+                event = controller.read_permission()
+                self.assertNotIn(secret[:6], event["summary"], cut)
+                self.assertLessEqual(len(event["summary"]), daemon_mod.PERMISSION_TEXT_MAX)
+
+    def test_a_summary_past_the_limit_is_dropped_whole(self):
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE)
+        self._write({"at": 1011, "tool": "Bash",
+                     "summary": "y" * (daemon_mod.PERMISSION_SUMMARY_LIMIT + 1)})
+        self.assertEqual(controller.read_permission(), {"at": 1011.0, "tool": "Bash", "summary": ""})
+
+    def test_a_notice_for_another_call_instance_is_ignored(self):
+        """A hook can finish writing after a new call began in the same session: the notice
+        carries the status `instance` it saw, and only this call's is read."""
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE,
+                                               instance="call-2")
+        for other in ({"instance": "call-1"}, {}, {"instance": None}):
+            self._write({"at": 1012, "tool": "Bash", "summary": "ls", **other})
+            self.assertIsNone(controller.read_permission(), other)
+        self._write({"at": 1012, "tool": "Bash", "summary": "ls", "instance": "call-2"})
+        self.assertEqual(controller.read_permission()["summary"], "ls")
+
     async def test_without_a_permission_reader_the_file_is_never_watched(self):
         self._write({"at": 1005, "tool": "Bash", "summary": "x"})
         opened = []

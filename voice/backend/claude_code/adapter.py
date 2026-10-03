@@ -110,7 +110,7 @@ class ClaudeCodeBackend(base.Backend):
         self._now = now
         self._echo_s = echo_s
         self._pane_open: tuple[str, float] | None = None    # (occurrence, when) the screen said
-        self._hook_open_at: float | None = None             # when the hooks module was said
+        self._hook_open: tuple[str, str, float] | None = None   # (tool, summary, when) said
         # tag → the turn that consumed it, filled by a receipt. This is how a dispatch learns
         # which turn owns it, and it is the only attribution the adapter performs.
         self._tags: dict[str, str] = {}
@@ -349,10 +349,12 @@ class ClaudeCodeBackend(base.Backend):
         else:
             transition = "replaced"
         if transition == "open":
-            if self._echoes(self._hook_open_at):
-                # The hooks module announced this prompt moments ago; the screen caught up.
-                # One announcement pays for one screen sighting.
-                self._hook_open_at = None
+            said = self._hook_open
+            if (said is not None and self._echoes(said[2])
+                    and request_on_screen(dialog.prompt, tool=said[0], summary=said[1])):
+                # The hooks module announced this very request moments ago; the screen caught
+                # up. One announcement pays for one screen sighting.
+                self._hook_open = None
                 return
             when = self._clock()
             self._pane_open = (dialog.occurrence_id, when) if when is not None else None
@@ -362,26 +364,32 @@ class ClaudeCodeBackend(base.Backend):
     async def announce_permission(self, *, tool: str, summary: str, at: float) -> bool:
         """A permission prompt the session's own hooks module saw open (permission.json).
 
-        Announced as a dialog `open` that carries NO options, so the broker can never arm it:
-        the operator hears that Claude is waiting and answers at the keyboard. `self._dialog`
-        stays the screen's alone. On a pane that reads dialogs the screen is read first; when
-        it already announced the prompt now on screen within the echo window, this one stays
-        quiet (and a screen sighting right after this one does). Returns whether it was said.
+        It is a REQUEST (the hook fires before any dialog, and another hook or the host may
+        decide it), announced as a dialog `open` that carries NO options, so the broker can
+        never arm it: the operator hears what Claude is asking for and answers at the
+        keyboard. `self._dialog` stays the screen's alone. On a pane that reads dialogs the
+        screen is read first, and this one stays quiet only when the dialog the screen itself
+        announced (an `open`, within the echo window) shows this very request: its tool and
+        summary in the dialog's text. An unrelated dialog, or one that arrived as `replaced`
+        (never said), does not silence it. Best effort; returns whether it was said.
         """
         if self._owner_lost is not None:
             return False
         if self._binding.get("dialogs", True):      # a screen-less binding says False
             await self._poll_pane()
-        on_screen = self._dialog.occurrence_id if self._dialog_present and self._dialog else None
+        current = self._dialog if self._dialog_present else None
         said = self._pane_open
-        if said is not None and said[0] == on_screen and self._echoes(said[1]):
+        if (current is not None and said is not None and said[0] == current.occurrence_id
+                and self._echoes(said[1])
+                and request_on_screen(current.prompt, tool=tool, summary=summary)):
             self._nudge.set()           # deliver whatever the fresh read found
             return False
-        prompt = f"Claude wants to use {tool}" + (f": {summary}" if summary and summary != tool
-                                                  else "")
+        asked = f"{tool}: {summary}" if summary and summary != tool else tool
+        prompt = f"Claude is asking to use {asked} — answer on your keyboard"
         dialog = base.Dialog(occurrence_id=f"hook:{at!r}", kind="permission", prompt=prompt,
                              action=None, scope=None, options=())
-        self._hook_open_at = self._clock()
+        when = self._clock()
+        self._hook_open = (tool, summary, when) if when is not None else None
         self._emit(base.Observation(kind=base.OBS_DIALOG, dialog=dialog,
                                     payload={"transition": "open", "source": "hook"}))
         self._nudge.set()
@@ -576,6 +584,18 @@ class ClaudeCodeBackend(base.Backend):
                             reason="cancel_is_a_now_send", tag=None)
 
 
+
+
+def request_on_screen(prompt: str, *, tool: str, summary: str) -> bool:
+    """Whether a dialog's text shows this permission request: the tool's name and the start
+    of its summary both appear in it, compared without whitespace or case (the screen wraps
+    long commands and the pane collapses whitespace). No summary, no match: a bare tool name
+    is too weak to silence anything."""
+    def squash(text: str) -> str:
+        return "".join(str(text or "").split()).casefold()
+
+    screen, wanted = squash(prompt), squash(summary)[:80]
+    return bool(wanted) and wanted in screen and squash(tool) in screen
 
 
 def result_id_for(turn_id: str | None, text: str) -> str:

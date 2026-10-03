@@ -495,9 +495,12 @@ class AgentLoop:
         if effect is None:
             if self.broker.terminal_only and transition == "open":
                 # No keyboard surface: the dialog is answered at the terminal, and the operator
-                # must at least hear that the backend is waiting there.
+                # must at least hear that the backend is waiting there. A request the session's
+                # own hooks module reported is said as a request: another hook or the host may
+                # decide it without any dialog.
+                lead = PERMISSION_ASKED if obs.payload.get("source") == "hook" else DIALOG_WAITING
                 await self.voice.announce(
-                    _backend_text(RESULT_PREFIX, "", f"{DIALOG_WAITING}\n{dialog.prompt}"),
+                    _backend_text(RESULT_PREFIX, "", f"{lead}\n{dialog.prompt}"),
                     "narration")
             return
         # Said out loud in our exact words, or it can never gather its delivery evidence.
@@ -864,6 +867,7 @@ def _receipt_words(outcome: str, reason: str | None) -> str:
 
 RESULT_PREFIX = "[后台]"
 DIALOG_WAITING = "backend 在终端里等你确认,语音这边不能替你按键;请到终端回答:"
+PERMISSION_ASKED = "backend 发起了权限请求,语音这边不能替你答应:"
 PROGRESS_PREFIX = "[后台·进行中]"
 TYPED_PREFIX = "[终端·你打的]"
 # The voice's own state, as words the model reacts to in its own words.

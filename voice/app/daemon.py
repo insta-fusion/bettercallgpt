@@ -277,11 +277,16 @@ def effect_vocabulary() -> frozenset[str]:
 
 CONTROL_NAME = "control.json"
 CONTROL_COMMANDS = ("stop",)
-# Written by the plugin's hooks module (plugin/hooks/register.tsx) when a permission prompt opens
-# in this session while its call is live: {"at": <epoch seconds>, "tool": ..., "summary": ...}.
+# Written by the plugin's hooks module (plugin/hooks/register.tsx) when Claude makes a permission
+# request in this session while its call is live:
+# {"at": <epoch seconds>, "tool": ..., "summary": ..., "instance": <this call's status instance>}.
 # Read and announced, never answered: approvals stay on the keyboard (DESIGN.md §Consent).
 PERMISSION_NAME = "permission.json"
-PERMISSION_TEXT_MAX = 300           # characters of `tool` / `summary` kept: a length, not a time
+# Lengths, not times. A summary longer than PERMISSION_SUMMARY_LIMIT is dropped whole, as the hooks
+# module does; what is kept is masked WHOLE and only then cut to PERMISSION_TEXT_MAX for speech,
+# so a cut can never leave part of a known credential that the masking would not recognise.
+PERMISSION_SUMMARY_LIMIT = 2000
+PERMISSION_TEXT_MAX = 200
 
 
 class ControlWatcher:
@@ -302,7 +307,8 @@ class ControlWatcher:
     """
 
     def __init__(self, directory: Path, on_command, *, open_watch=None,
-                 on_permission=None, since: float | None = None) -> None:
+                 on_permission=None, since: float | None = None,
+                 instance: str | None = None) -> None:
         self.directory = directory
         self._on_command = on_command
         self._open_watch = open_watch or _directory_watch
@@ -311,8 +317,10 @@ class ControlWatcher:
         self._loop: Any = None
         self._seen_at: float | None = None
         self._on_permission = on_permission
-        # A report older than this call (its status `started_at`) is a previous call's.
+        # A report older than this call (its status `started_at`), or naming another status
+        # `instance`, is a previous call's: a hook can finish writing after a new call began.
         self._since = since
+        self._instance = instance
         self._permission_seen_at: float | None = None
         self._file_watch: Any = None
         self._file_task: Any = None
@@ -409,7 +417,8 @@ class ControlWatcher:
         """The permission prompt the hooks module reported, once; None when nothing is new.
 
         `at` is the de-duplicator, as for commands: both watches can fire for one write. A
-        report older than this call is a previous call's. A file caught mid-write (it is
+        report older than this call, or for another call's instance, is not this call's. A
+        file caught mid-write (it is
         written in place, not atomically) does not parse and is not marked seen: the rest of
         that write wakes the file watch and it is read again then.
         """
@@ -425,6 +434,8 @@ class ControlWatcher:
         if not isinstance(tool, str) or not _one_line(tool):
             return None
         if self._since is not None and at < self._since:
+            return None
+        if self._instance is not None and data.get("instance") != self._instance:
             return None
         if at == self._permission_seen_at:
             return None
@@ -484,9 +495,16 @@ class ControlWatcher:
 
 
 def _one_line(text: str) -> str:
-    """Text from permission.json as one short line: whitespace and control characters
-    collapsed, cut at PERMISSION_TEXT_MAX. It is spoken about, never parsed or run."""
-    line = " ".join("".join(c if c.isprintable() else " " for c in text).split())
+    """Text from permission.json as one short line for speech. Known credential values are
+    masked on the WHOLE text first; only then are whitespace and control characters collapsed
+    and the line cut at PERMISSION_TEXT_MAX. Longer than PERMISSION_SUMMARY_LIMIT, nothing is
+    kept. It is spoken about, never parsed or run."""
+    def flat(value: str) -> str:
+        return " ".join("".join(c if c.isprintable() else " " for c in value).split())
+
+    if len(flat(text)) > PERMISSION_SUMMARY_LIMIT:
+        return ""
+    line = flat(voice_config.redact_text(text))
     return line if len(line) <= PERMISSION_TEXT_MAX else line[:PERMISSION_TEXT_MAX - 1] + "…"
 
 
@@ -869,7 +887,8 @@ class VoiceDaemon:
         self.control = ControlWatcher(self.dir, self.on_control,
                                       open_watch=self._open_watch,
                                       on_permission=self.on_permission,
-                                      since=self.status.data.get("started_at"))
+                                      since=self.status.data.get("started_at"),
+                                      instance=self.status.data.get("instance"))
         self.control.start(asyncio.get_running_loop())
         self.status.set(audio_ready=True, phase="connecting")
         session = self.session

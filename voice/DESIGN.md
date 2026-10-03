@@ -110,14 +110,18 @@ A backend observes one harness and actuates it; it decides no meaning.
     argv (`--nonce <n>`, parsed as `start` by the daemon's own parser) must agree with it —
     that catches mis-launches; it is not itself a proof. Command text is never parsed as shell.
     No dialog is observed on screen, so consent wording is terminal-only.
-  - **Prompts reported by the session itself** (either binding): the plugin's hooks module
-    (`plugin/hooks/register.tsx`) observes `classic.PermissionRequest` and, while the call is
-    live, writes `permission.json` (`at`, `tool`, one-line `summary`) into the call's state
-    directory. The control watcher reads it (deduped by `at`, never one older than the call, a
-    half-written file read again when the write finishes; the file is rewritten in place, so it
-    is watched itself, not only its directory) and the adapter announces it as a dialog `open`
-    with NO options: narrated, never armable. With a pane, the screen is read first and the
-    prompt is said once (`DIALOG_ECHO_S`). The hook only observes; nothing here answers it.
+  - **Requests reported by the session itself** (either binding): the plugin's hooks module
+    (`plugin/hooks/register.tsx`) observes `classic.PermissionRequest` (a permission REQUEST:
+    another hook or the host may decide it without a dialog) and, while the call is live, writes
+    `permission.json` (`at`, `tool`, one-line `summary`, the status `instance`) into the call's
+    state directory. The control watcher reads it (deduped by `at`, only this call's `instance`,
+    never one older than the call, a half-written file read again when the write finishes; the
+    file is rewritten in place, so it is watched itself, not only its directory), masks known
+    credentials in the whole summary and only then shortens it, and the adapter announces it as a
+    dialog `open` with NO options: narrated as a request, never armable. With a pane, the screen
+    is read first; one request is said once only when the screen's own announced dialog shows the
+    same tool and summary within `DIALOG_ECHO_S` (best effort; an unrelated or `replaced` dialog
+    never silences it). The hook only observes; nothing here answers it.
   - **Trust boundary.** Both proofs answer "which session started me", not "is this process
     friendly": any process descending from the session's claude (a hook, an MCP server) already
     holds the relay token. The proofs stop mis-binding, replay and cross-session binding.
@@ -154,4 +158,4 @@ Wire-observable invariants, each held by named tests.
 | E5 | transcript rotation survives; an op without outcome is `uncertain`, never replayed | test_backend_claude_code_transcript, test_backend_ledger |
 | E6 | after owner loss the next actuation is refused | test_backend_claude_code_adapter, _pane, _relay |
 | E7 | `process.py` drives a CLI child: send, progress, result, cancel | test_backend_process |
-| E8 | a hook-reported prompt is read once, announced with no options (never armed), said once with a pane | test_app_daemon, test_backend_claude_code_permission |
+| E8 | a hook-reported request is read once (this call's instance), masked before it is cut, announced with no options (never armed), said once with a pane only when the screen shows the same request | test_app_daemon, test_backend_claude_code_permission |
