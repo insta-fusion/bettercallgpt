@@ -743,6 +743,163 @@ class ControlChannel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first, second, "a second stop must not re-end the session")
 
 
+class PermissionChannel(unittest.IsolatedAsyncioTestCase):
+    """permission.json: what the plugin's hooks module writes when a permission prompt opens
+    while the call is live. Read once per prompt, never a previous call's, never half a file."""
+
+    SINCE = 1000.0
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.path = self.dir / daemon_mod.PERMISSION_NAME
+        self.seen: list[dict] = []
+
+    def _write(self, payload) -> None:
+        text = payload if isinstance(payload, str) else json.dumps(payload)
+        self.path.write_text(text, encoding="utf-8")
+
+    async def _watcher(self):
+        """Fake watches, one per path, fired by hand (ControlChannel.FakeWatch)."""
+        watches: dict[Path, ControlChannel.FakeWatch] = {}
+
+        def open_watch(path):
+            watches[Path(path)] = ControlChannel.FakeWatch()
+            return watches[Path(path)]
+
+        async def on_command(command):
+            pass
+
+        controller = daemon_mod.ControlWatcher(self.dir, on_command, open_watch=open_watch,
+                                               on_permission=self.seen.append,
+                                               since=self.SINCE)
+        controller.start(asyncio.get_running_loop())
+
+        def cleanup():
+            controller.close()
+            for watch in watches.values():
+                if not watch.closed:
+                    watch.close()
+        self.addCleanup(cleanup)
+        return controller, watches
+
+    async def test_a_report_is_read_once_and_a_new_one_after_it(self):
+        _controller, watches = await self._watcher()
+        self._write({"at": 1001.5, "tool": "Bash", "summary": "touch hello.txt"})
+        for _ in range(3):                         # a directory event can fire repeatedly
+            watches[self.dir].fire()
+            await _settle()
+        self.assertEqual(self.seen, [{"at": 1001.5, "tool": "Bash",
+                                      "summary": "touch hello.txt"}])
+        # Rewritten in place: only the FILE's watch sees it (kqueue on a directory does not).
+        self._write({"at": 1002.0, "tool": "Edit", "summary": "/repo/a.py"})
+        watches[self.path].fire()
+        await _settle()
+        self.assertEqual([e["tool"] for e in self.seen], ["Bash", "Edit"])
+
+    async def test_a_report_older_than_the_call_is_ignored(self):
+        self._write({"at": self.SINCE - 60, "tool": "Bash", "summary": "rm -rf build/"})
+        _controller, watches = await self._watcher()
+        watches[self.dir].fire()
+        await _settle()
+        self.assertEqual(self.seen, [])
+        self.assertIn(self.path, watches, "an existing file is watched from the start")
+
+    async def test_a_half_written_report_is_read_again_when_the_write_finishes(self):
+        _controller, watches = await self._watcher()
+        self._write('{"at": 1003.0, "tool": "Ba')
+        watches[self.dir].fire()
+        await _settle()
+        self.assertEqual(self.seen, [])
+        self._write({"at": 1003.0, "tool": "Bash", "summary": "make"})
+        watches[self.path].fire()
+        await _settle()
+        self.assertEqual(self.seen, [{"at": 1003.0, "tool": "Bash", "summary": "make"}])
+
+    def test_bad_reports_are_ignored(self):
+        controller = daemon_mod.ControlWatcher(self.dir, None, on_permission=self.seen.append,
+                                               since=self.SINCE)
+        for bad in ("", "[]", "null", '{"tool": "Bash"}', '{"at": "1001", "tool": "Bash"}',
+                    '{"at": true, "tool": "Bash"}', '{"at": NaN, "tool": "Bash"}',
+                    '{"at": 1001, "tool": "  "}', '{"at": 1001, "tool": 7}'):
+            self._write(bad)
+            self.assertIsNone(controller.read_permission(), bad)
+        self.path.unlink()
+        self.assertIsNone(controller.read_permission())
+
+    def test_the_text_is_one_short_line(self):
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE)
+        self._write({"at": 1004, "tool": "Bash\n", "summary": "echo a\n\techo b\x1b[2J" + "x" * 900})
+        event = controller.read_permission()
+        self.assertEqual(event["tool"], "Bash")
+        self.assertTrue(event["summary"].startswith("echo a echo b [2J"))
+        self.assertEqual(len(event["summary"]), daemon_mod.PERMISSION_TEXT_MAX)
+        self.assertEqual(event["at"], 1004.0)
+
+    async def test_without_a_permission_reader_the_file_is_never_watched(self):
+        self._write({"at": 1005, "tool": "Bash", "summary": "x"})
+        opened = []
+
+        def open_watch(path):
+            opened.append(Path(path))
+            return ControlChannel.FakeWatch()
+
+        async def on_command(command):
+            pass
+
+        controller = daemon_mod.ControlWatcher(self.dir, on_command, open_watch=open_watch)
+        controller.start(asyncio.get_running_loop())
+        controller.close()
+        self.assertEqual(opened, [self.dir])
+
+    async def test_a_real_watch_sees_a_rewrite_in_place(self):
+        """The hooks module's `$.fs.write` truncates and writes the same inode (measured). On
+        macOS that is invisible to the directory's kqueue; the file's own watch must see it."""
+        from voice import platform as voice_platform
+
+        controller = daemon_mod.ControlWatcher(
+            self.dir, None, on_permission=self.seen.append, since=self.SINCE,
+            open_watch=lambda p: voice_platform.watch(p, poll_s=0.01))
+        controller.start(asyncio.get_running_loop())
+        self.addCleanup(controller.close)
+
+        async def until(count):
+            for _ in range(200):
+                if len(self.seen) >= count:
+                    return
+                await asyncio.sleep(0.01)
+
+        self._write({"at": 1006.0, "tool": "Bash", "summary": "first"})
+        await until(1)
+        inode = self.path.stat().st_ino
+        with open(self.path, "r+", encoding="utf-8") as handle:     # in place, same inode
+            handle.truncate(0)
+            handle.write(json.dumps({"at": 1007.0, "tool": "Bash", "summary": "second"}))
+        self.assertEqual(self.path.stat().st_ino, inode)
+        await until(2)
+        self.assertEqual([e["summary"] for e in self.seen], ["first", "second"])
+
+    async def test_the_daemon_hands_a_report_to_a_backend_that_can_announce_it(self):
+        announced = []
+
+        class Announcing:
+            async def announce_permission(self, *, tool, summary, at):
+                announced.append((tool, summary, at))
+                return True
+
+        daemon = VoiceDaemon(session_id="s", provider="voice_live", backend_name="process",
+                             state=self.dir)
+        daemon.backend = Announcing()
+        daemon.on_permission({"at": 1008.0, "tool": "Bash", "summary": "ls"})
+        await _settle()
+        self.assertEqual(announced, [("Bash", "ls", 1008.0)])
+        daemon.backend = object()                    # the process backend: nothing to say
+        daemon.on_permission({"at": 1009.0, "tool": "Bash", "summary": "ls"})
+        await _settle()
+        self.assertEqual(len(announced), 1)
+
+
 class ClaudeCodeWiring(unittest.IsolatedAsyncioTestCase):
     """The real graph, from a fake binding and a fake terminal reader.
 

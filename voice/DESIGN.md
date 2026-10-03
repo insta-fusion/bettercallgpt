@@ -78,8 +78,9 @@ No timer participates in a semantic decision. The only durations are lifecycle p
 `voice/app/daemon.py` and injected into the modules that use them: connection
 open/close/reconnect (with the reconnect backoff and the provider-session rollover, which may only
 open a fresh provider session), the audio-lock bound and cadence, pane read, relay connect, process
-probe, the operator's session cap and idle close, the farewell bound,
-and the portable file-watch cadence (`voice/platform.py`, Linux/Windows). The rollover's QUIET
+probe, the operator's session cap and idle close, the farewell bound, the dialog echo window
+(one permission prompt seen by the pane and reported by the hooks module is said once; it decides
+nothing else), and the portable file-watch cadence (`voice/platform.py`, Linux/Windows). The rollover's QUIET
 moment is not a timer: the loop reports it from events (`AgentLoop.until_quiet`: nobody speaking,
 no unanswered call or delegation, no open response, the speaker drained). Forbidden, and grep-tested
 (`test_core_timers.py`): fragment grace, confirmation windows, pause caps, response deadlines.
@@ -107,7 +108,15 @@ A backend observes one harness and actuates it; it decides no meaning.
     whichever launcher or state root is used). The process's own environment (`NONCE=<n>`) and
     argv (`--nonce <n>`, parsed as `start` by the daemon's own parser) must agree with it —
     that catches mis-launches; it is not itself a proof. Command text is never parsed as shell.
-    No dialog is observed, so consent wording is terminal-only.
+    No dialog is observed on screen, so consent wording is terminal-only.
+  - **Prompts reported by the session itself** (either binding): the plugin's hooks module
+    (`plugin/hooks/register.tsx`) observes `classic.PermissionRequest` and, while the call is
+    live, writes `permission.json` (`at`, `tool`, one-line `summary`) into the call's state
+    directory. The control watcher reads it (deduped by `at`, never one older than the call, a
+    half-written file read again when the write finishes; the file is rewritten in place, so it
+    is watched itself, not only its directory) and the adapter announces it as a dialog `open`
+    with NO options: narrated, never armable. With a pane, the screen is read first and the
+    prompt is said once (`DIALOG_ECHO_S`). The hook only observes; nothing here answers it.
   - **Trust boundary.** Both proofs answer "which session started me", not "is this process
     friendly": any process descending from the session's claude (a hook, an MCP server) already
     holds the relay token. The proofs stop mis-binding, replay and cross-session binding.
@@ -144,3 +153,4 @@ Wire-observable invariants, each held by named tests.
 | E5 | transcript rotation survives; an op without outcome is `uncertain`, never replayed | test_backend_claude_code_transcript, test_backend_ledger |
 | E6 | after owner loss the next actuation is refused | test_backend_claude_code_adapter, _pane, _relay |
 | E7 | `process.py` drives a CLI child: send, progress, result, cancel | test_backend_process |
+| E8 | a hook-reported prompt is read once, announced with no options (never armed), said once with a pane | test_app_daemon, test_backend_claude_code_permission |

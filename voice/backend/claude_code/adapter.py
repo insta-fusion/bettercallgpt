@@ -80,7 +80,9 @@ class ClaudeCodeBackend(base.Backend):
     def __init__(self, *, pane: Any, tailer: Any, relay: Any, binding: dict,
                  mint: Callable[[], str] | None = None,
                  on_qualified: Callable[[], None] | None = None,
-                 wake: Callable[[], Any] | None = None) -> None:
+                 wake: Callable[[], Any] | None = None,
+                 now: Callable[[], float] | None = None,
+                 echo_s: float | None = None) -> None:
         self._pane = pane
         self._tailer = tailer
         # Awaited after a quiet poll; resolves when the transcript changed. Event-driven,
@@ -102,6 +104,13 @@ class ClaudeCodeBackend(base.Backend):
         self._turn_id: str | None = None
         self._dialog: base.Dialog | None = None
         self._dialog_present = False
+        # One permission prompt, two witnesses: the screen (a pane that reads dialogs) and the
+        # session's hooks module (`announce_permission`). The clock and the echo window are the
+        # daemon's ports; without them both witnesses always speak.
+        self._now = now
+        self._echo_s = echo_s
+        self._pane_open: tuple[str, float] | None = None    # (occurrence, when) the screen said
+        self._hook_open_at: float | None = None             # when the hooks module was said
         # tag → the turn that consumed it, filled by a receipt. This is how a dispatch learns
         # which turn owns it, and it is the only attribution the adapter performs.
         self._tags: dict[str, str] = {}
@@ -339,8 +348,54 @@ class ClaudeCodeBackend(base.Backend):
             return          # same dialog still up: nothing changed, say nothing
         else:
             transition = "replaced"
+        if transition == "open":
+            if self._echoes(self._hook_open_at):
+                # The hooks module announced this prompt moments ago; the screen caught up.
+                # One announcement pays for one screen sighting.
+                self._hook_open_at = None
+                return
+            when = self._clock()
+            self._pane_open = (dialog.occurrence_id, when) if when is not None else None
         self._emit(base.Observation(kind=base.OBS_DIALOG, dialog=dialog,
                                     payload={"transition": transition}))
+
+    async def announce_permission(self, *, tool: str, summary: str, at: float) -> bool:
+        """A permission prompt the session's own hooks module saw open (permission.json).
+
+        Announced as a dialog `open` that carries NO options, so the broker can never arm it:
+        the operator hears that Claude is waiting and answers at the keyboard. `self._dialog`
+        stays the screen's alone. On a pane that reads dialogs the screen is read first; when
+        it already announced the prompt now on screen within the echo window, this one stays
+        quiet (and a screen sighting right after this one does). Returns whether it was said.
+        """
+        if self._owner_lost is not None:
+            return False
+        if self._binding.get("dialogs", True):      # a screen-less binding says False
+            await self._poll_pane()
+        on_screen = self._dialog.occurrence_id if self._dialog_present and self._dialog else None
+        said = self._pane_open
+        if said is not None and said[0] == on_screen and self._echoes(said[1]):
+            self._nudge.set()           # deliver whatever the fresh read found
+            return False
+        prompt = f"Claude wants to use {tool}" + (f": {summary}" if summary and summary != tool
+                                                  else "")
+        dialog = base.Dialog(occurrence_id=f"hook:{at!r}", kind="permission", prompt=prompt,
+                             action=None, scope=None, options=())
+        self._hook_open_at = self._clock()
+        self._emit(base.Observation(kind=base.OBS_DIALOG, dialog=dialog,
+                                    payload={"transition": "open", "source": "hook"}))
+        self._nudge.set()
+        return True
+
+    def _clock(self) -> float | None:
+        return self._now() if self._now is not None else None
+
+    def _echoes(self, then: float | None) -> bool:
+        """Whether `then` was within the echo window of now (False without the ports)."""
+        now = self._clock()
+        if then is None or now is None or self._echo_s is None:
+            return False
+        return 0 <= now - then <= self._echo_s
 
     def _dialog_from(self, classification: dict) -> base.Dialog | None:
         """A `Dialog` carrying only what the screen actually showed.
