@@ -26,7 +26,8 @@ export const BAND = "On a call · Better Call GPT · voice can't approve, use yo
 
 const live = atom({ plugin: 'bettercallgpt', key: 'live' } as const, false as CallLive)
 
-/** Where the voice process keeps its state, resolved as its launcher does. */
+/** Where the voice process keeps its state. The order mirrors bettercallgpt/cli.py
+ * user_state_dir + apply_defaults, which main() applies before daemon.main in the same process. */
 async function stateRoot($: EngineInterface): Promise<string | undefined> {
   const absolute = (path: string | undefined) =>
     path?.startsWith('/') ? path.replace(/\/+$/, '') : undefined

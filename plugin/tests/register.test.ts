@@ -19,9 +19,11 @@ type Write = { path: string; text: string }
 /** The world beneath the plugin: a file system in memory, the session, env and clock. */
 function world(on: On, files: Map<string, string>, env: Record<string, string> = { HOME }) {
   const writes: Write[] = []
+  const reads: string[] = []
   const below: unknown[] = []
   on('fs.exists', ($, e) => ({ value: files.has(e.path) }))
   on('fs.read', ($, e) => {
+    reads.push(e.path)
     const text = files.get(e.path)
     return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
   })
@@ -42,7 +44,7 @@ function world(on: On, files: Map<string, string>, env: Record<string, string> =
   })
   mock.env(on, env)
   const clock = mock.clock(on, { now: NOW_MS })
-  return { writes, below, clock }
+  return { writes, reads, below, clock }
 }
 
 const status = (value: object) => new Map([[`${DIR}/status.json`, JSON.stringify(value)]])
@@ -87,16 +89,32 @@ describe('classic.PermissionRequest', () => {
     })
   })
 
-  test('finds the state directory the way the launcher does', async ($: Engine, on: On) => {
-    const explicit = `/s/${SID}`
-    const xdg = `/x/bettercallgpt/${SID}`
-    const files = new Map([
-      [`${explicit}/status.json`, JSON.stringify(LIVE)],
-      [`${xdg}/status.json`, JSON.stringify(LIVE)],
-    ])
-    const { writes } = world(on, files, { HOME, XDG_STATE_HOME: '/x', VOICE_LISTEN_STATE_DIR: '/s' })
+  // The launcher's order (bettercallgpt/cli.py user_state_dir + apply_defaults): an explicit
+  // VOICE_LISTEN_STATE_DIR, else $XDG_STATE_HOME/bettercallgpt, else ~/.local/state/bettercallgpt.
+  const EXPLICIT = `/s/${SID}`
+  const XDG = `/x/bettercallgpt/${SID}`
+  const everywhere = () =>
+    new Map([EXPLICIT, XDG, DIR].map(dir => [`${dir}/status.json`, JSON.stringify(LIVE)]))
+
+  test('XDG_STATE_HOME without VOICE_LISTEN_STATE_DIR: $XDG_STATE_HOME/bettercallgpt', async ($: Engine, on: On) => {
+    const { writes, reads } = world(on, everywhere(), { HOME, XDG_STATE_HOME: '/x' })
     await $.classic.PermissionRequest(PROMPT)
-    expect(writes.map(w => w.path)).toEqual([`${explicit}/permission.json`])
+    expect(reads).toEqual([`${XDG}/status.json`])
+    expect(writes.map(w => w.path)).toEqual([`${XDG}/permission.json`])
+  })
+
+  test('VOICE_LISTEN_STATE_DIR wins over XDG_STATE_HOME', async ($: Engine, on: On) => {
+    const { writes, reads } = world(on, everywhere(), { HOME, XDG_STATE_HOME: '/x', VOICE_LISTEN_STATE_DIR: '/s' })
+    await $.classic.PermissionRequest(PROMPT)
+    expect(reads).toEqual([`${EXPLICIT}/status.json`])
+    expect(writes.map(w => w.path)).toEqual([`${EXPLICIT}/permission.json`])
+  })
+
+  test('neither set: HOME/.local/state/bettercallgpt', async ($: Engine, on: On) => {
+    const { writes, reads } = world(on, everywhere(), { HOME })
+    await $.classic.PermissionRequest(PROMPT)
+    expect(reads).toEqual([`${DIR}/status.json`])
+    expect(writes.map(w => w.path)).toEqual([`${DIR}/permission.json`])
   })
 
   test('a session id that is not a plain name is never used as a path', async ($: Engine, on: On) => {
