@@ -164,9 +164,16 @@ export function failure(stderr: string, code: unknown): string {
  * installed for development), otherwise the pinned release through uvx. */
 async function launcher($: EngineInterface): Promise<string[]> {
   if (command !== undefined) return command
-  const found = await $.process
+  let found = await $.process
     .run(['/bin/sh', '-c', 'command -v bettercallgpt'])
     .then(result => (result.exitCode === 0 ? result.stdout.trim() : ''), () => '')
+  if (!found.startsWith('/')) {
+    // A desktop app started from the Dock has a short PATH: look where `uv tool install`
+    // puts the command.
+    const home = await $.env.get('HOME')
+    const local = `${home ?? ''}/.local/bin/bettercallgpt`
+    if (local.startsWith('/') && (await $.fs.exists(local).catch(() => false))) found = local
+  }
   command = found.startsWith('/') ? [found] : ['uvx', '--from', RELEASE, 'bettercallgpt']
   return command
 }
