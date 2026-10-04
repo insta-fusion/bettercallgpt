@@ -269,7 +269,7 @@ describe('the call console', () => {
 
     await clock.advance(500) // status.json is live now
     expect(await ui.find({ type: 'Button', key: 'steer' })).toBeDefined()
-    expect((await ui.find({ type: 'Button', key: 'hangup' }))?.props.label).toBe('📴 Hang up')
+    expect((await ui.find({ type: 'Button', key: 'hangup' }))?.props.label).toBe('Hang up')
 
     await ui.press({ key: 'call' }).catch(() => undefined) // no Call button on a call
     expect(spawned).toHaveLength(1)
@@ -309,7 +309,7 @@ describe('the call console', () => {
     expect(await ui.find({ type: 'Button', key: 'call' })).toBeDefined()
     expect((await ui.find({ type: 'Text', text: ' ✕ CALL FAILED ' }))?.props.backgroundColor).toBe('red')
     expect(await ui.find({ text: 'audio-device busy (another voice surface is active)' })).toBeDefined()
-    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('📞 Call again')
+    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('Call again')
   })
 
   test('a call started by /bettercallgpt:on shows the same console and goes when its heartbeat stops', async ($: Engine, on: On) => {
@@ -330,7 +330,7 @@ describe('the call console', () => {
     await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
     await clock.advance(500)
-    expect((await ui.find({ type: 'Text', text: ' 🎙 LIVE ' }))?.props.backgroundColor).toBe('green')
+    expect((await ui.find({ type: 'Text', text: ' ● LIVE ' }))?.props.backgroundColor).toBe('green')
     expect((await ui.find({ type: 'Text', text: '«先跑一下测试» not sent' }))?.props.color).toBe('yellow')
     expect((await ui.find({ type: 'Text', text: '2 queued' }))?.props.color).toBe('cyan')
     expect((await ui.find({ type: 'Button', key: 'steer' }))?.props.variant).toBe('primary')
@@ -445,13 +445,12 @@ describe('reading the voice process', () => {
       surface: 'terminal',
       props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
     })
+    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('Call')
+    expect((await ui.find({ type: 'Text', text: ' ☎ ' }))?.props.backgroundColor).toBe('green') // the default keys
+    await $.command.run({ command: 'call-icons', args: 'emoji' })
     expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('📞 Call')
-    await $.command.run({ command: 'call-icons', args: 'none' })
-    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('Call')
-    expect(store.get('icons')).toBe('none')
     await $.command.run({ command: 'call-icons', args: 'nerd' })
-    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('Call')
-    expect((await ui.find({ type: 'Text', text: '\uf095' }))?.props.color).toBe('green') // the handset, tinted
+    expect((await ui.find({ type: 'Text', text: ' \uf095 ' }))?.props.backgroundColor).toBe('green')
     await $.command.run({ command: 'call-icons', args: 'none' })
     await $.command.run({ command: 'call-icons', args: 'sparkles' })
     expect(store.get('icons')).toBe('none')

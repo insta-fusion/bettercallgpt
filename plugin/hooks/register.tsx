@@ -43,9 +43,8 @@ const FILE_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit'
 // A spoken message as it arrives in the session: its text ends with the voice tag.
 const VOICE_TAG = /⟨v#[^⟩]*⟩\s*$/
 
-// The band's colors: the brand's yellow as a pill's background (dark text on it reads on light
-// and dark themes alike), and plain terminal colors for the states.
-const BRAND = '#F5C518'
+// The band's colors are the terminal's own named colors, so they follow the person's theme:
+// green is live and "call", red is "hang up" and failure, yellow is waiting, cyan is the queue.
 const LIVE = 'green'
 const WARN = 'yellow'
 const QUEUE = 'cyan'
@@ -54,12 +53,15 @@ const INK = 'black'
 // Below this many columns the words heard and not sent get a row of their own.
 const NARROW = 80
 
-// The symbols on the controls. `emoji` draws everywhere; `nerd` needs a Nerd Font in the
-// terminal (a handset, a steering wheel, a hung-up handset); `none` is words only.
-// Chosen with /call-icons and kept in this plugin's store.
+// The symbols on the controls, chosen with /call-icons and kept in this plugin's store.
+// `keys` (the default) and `nerd` draw each symbol as a small colored key before its button:
+// green to call, red to hang up, as on a phone. `keys` uses characters every font has; `nerd`
+// needs a Nerd Font and has a real hung-up handset and a steering wheel. `emoji` puts emoji in
+// the labels; `none` is words only.
 export const ICON_SETS = {
+  keys: { call: '☎', steer: '⎈', hangup: '☎', live: '● ' },
+  nerd: { call: '\uf095', steer: '\u{f04d4}', hangup: '\u{f03fa}', live: '\u{f036c} ' },
   emoji: { call: '📞 ', steer: '🛞 ', hangup: '📴 ', live: '🎙 ' },
-  nerd: { call: '\uf095 ', steer: '\u{f04d4} ', hangup: '\u{f03fa} ', live: '\u{f036c} ' },
   none: { call: '', steer: '', hangup: '', live: '● ' },
 } as const
 export type IconSet = keyof typeof ICON_SETS
@@ -80,7 +82,7 @@ let mainTurn = ''
 let steerWaits = false
 let isStarting = false
 let steerShown = ''
-let icons: IconSet = 'emoji'
+let icons: IconSet = 'keys'
 let ticks = 0
 let isPolling = false
 
@@ -273,7 +275,7 @@ async function bringForward($: EngineInterface) {
 
 async function chooseIcons($: EngineInterface, wanted: string): Promise<string> {
   const name = wanted.trim()
-  if (!(name in ICON_SETS)) return `icons: ${icons} (choose emoji, nerd or none)`
+  if (!(name in ICON_SETS)) return `icons: ${icons} (choose keys, nerd, emoji or none)`
   icons = name as IconSet
   await $.store.set(ICONS_KEY, icons)
   await update($, call, view => ({ ...view })) // draw the band again
@@ -375,8 +377,8 @@ export const register: Register = on => {
     try {
       await $.command.register({
         name: 'call-icons',
-        description: 'Symbols on the call controls: emoji, nerd (Nerd Font) or none',
-        argumentHint: '[emoji|nerd|none]',
+        description: 'Symbols on the call controls: keys, nerd (Nerd Font), emoji or none',
+        argumentHint: '[keys|nerd|emoji|none]',
         immediate: true,
       })
       await $.command.register({
@@ -440,14 +442,14 @@ export const register: Register = on => {
     const below = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const icon = ICON_SETS[icons]
-    // Emoji carry their own colors, inside the label. Nerd Font symbols are one-color glyphs:
-    // drawn before the button in the control's color (green to call, red to hang up).
-    const isTinted = icons === 'nerd'
-    const inLabel = (symbol: string) => (isTinted ? '' : symbol)
+    // Emoji carry their own colors, inside the label. The other symbols are one-color
+    // characters: each is drawn before its button as a key in the control's color.
+    const isKeyed = icons === 'keys' || icons === 'nerd'
+    const inLabel = (symbol: string) => (isKeyed ? '' : symbol)
     const tint = (symbol: string, color: string) =>
-      isTinted ? (
-        <Text color={color} bold>
-          {symbol.trim()}
+      isKeyed ? (
+        <Text backgroundColor={color} color={INK} bold>
+          {` ${symbol} `}
         </Text>
       ) : null
     const isNarrow = e.props.bodyColumns < NARROW
@@ -461,11 +463,7 @@ export const register: Register = on => {
               <Text backgroundColor={END} color={INK} bold>
                 {' ✕ CALL FAILED '}
               </Text>
-            ) : (
-              <Text backgroundColor={BRAND} color={INK} bold>
-                {' BETTER CALL GPT '}
-              </Text>
-            )}
+            ) : null}
             {tint(icon.call, LIVE)}
             <Button
               key="call"
@@ -474,9 +472,14 @@ export const register: Register = on => {
               variant="primary"
               onPress={() => void startCall($)}
             />
-            <Text dimColor={!hasFailed} wrap="truncate-end">
-              {hasFailed ? view.note : isNarrow ? 'talk by voice' : 'talk to this session by voice · /call'}
-            </Text>
+            {hasFailed ? (
+              <Text wrap="truncate-end">{view.note}</Text>
+            ) : (
+              <Text wrap="truncate-end">
+                <Text bold>Better Call GPT</Text>
+                <Text dimColor>{isNarrow ? '' : ' · talk to this session by voice'}</Text>
+              </Text>
+            )}
           </Box>
         </Box>
       )
