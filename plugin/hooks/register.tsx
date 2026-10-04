@@ -400,7 +400,7 @@ export const register: Register = on => {
               Better Call GPT{' '}
             </Text>
             <Text color={LIVE} bold>
-              ☎{' '}
+              ✆{' '}
             </Text>
             <Button key="call" label="Call" hotkey="c" variant="primary" onPress={() => void startCall($)} />
             <Text color={view.note === '' ? undefined : WARN} dimColor={view.note === ''} wrap="truncate-end">
@@ -416,10 +416,10 @@ export const register: Register = on => {
           {below}
           <Box>
             <Text color={BRAND} bold>
-              ☎ Calling…{' '}
+              ✆ Calling…{' '}
             </Text>
             <Text color={END} bold>
-              ✕{' '}
+              ✆{' '}
             </Text>
             <Button key="hangup" label="Hang up" hotkey="h" onPress={() => void hangUp($)} />
           </Box>
@@ -449,7 +449,7 @@ export const register: Register = on => {
           {view.working ? <Text color={WORK}>⚙ Claude working </Text> : null}
           {view.note === '' ? null : <Text dimColor>{view.note} </Text>}
           <Text color={QUEUE} bold>
-            ➤{' '}
+            ⎈{' '}
           </Text>
           <Button
             key="steer"
@@ -459,7 +459,7 @@ export const register: Register = on => {
             onPress={() => void steer($)}
           />
           <Text color={END} bold>
-            {' '}✕{' '}
+            {' '}✆{' '}
           </Text>
           <Button key="hangup" label="Hang up" hotkey="h" variant="secondary" onPress={() => void hangUp($)} />
         </Box>

@@ -254,7 +254,7 @@ describe('the call console', () => {
     const nonce = env?.NONCE ?? ''
     expect(nonce).toMatch(/^mod-[a-z0-9]+-[a-z0-9]+$/)
     expect(argv).toEqual([BIN, '--session', SID, '--nonce', nonce, '--mod', 'start'])
-    expect(await ui.find({ type: 'Text', text: '☎ Calling… ' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '✆ Calling… ' })).toBeDefined()
 
     await clock.advance(500) // status.json is live now
     expect(await ui.find({ type: 'Button', key: 'steer' })).toBeDefined()
