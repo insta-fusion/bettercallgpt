@@ -449,6 +449,10 @@ describe('reading the voice process', () => {
     await $.command.run({ command: 'call-icons', args: 'none' })
     expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('Call')
     expect(store.get('icons')).toBe('none')
+    await $.command.run({ command: 'call-icons', args: 'nerd' })
+    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('Call')
+    expect((await ui.find({ type: 'Text', text: '\uf095' }))?.props.color).toBe('green') // the handset, tinted
+    await $.command.run({ command: 'call-icons', args: 'none' })
     await $.command.run({ command: 'call-icons', args: 'sparkles' })
     expect(store.get('icons')).toBe('none')
   })

@@ -440,6 +440,16 @@ export const register: Register = on => {
     const below = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const icon = ICON_SETS[icons]
+    // Emoji carry their own colors, inside the label. Nerd Font symbols are one-color glyphs:
+    // drawn before the button in the control's color (green to call, red to hang up).
+    const isTinted = icons === 'nerd'
+    const inLabel = (symbol: string) => (isTinted ? '' : symbol)
+    const tint = (symbol: string, color: string) =>
+      isTinted ? (
+        <Text color={color} bold>
+          {symbol.trim()}
+        </Text>
+      ) : null
     const isNarrow = e.props.bodyColumns < NARROW
     if (view.phase === 'idle') {
       const hasFailed = view.note !== ''
@@ -456,9 +466,10 @@ export const register: Register = on => {
                 {' BETTER CALL GPT '}
               </Text>
             )}
+            {tint(icon.call, LIVE)}
             <Button
               key="call"
-              label={`${icon.call}${hasFailed ? 'Call again' : 'Call'}`}
+              label={`${inLabel(icon.call)}${hasFailed ? 'Call again' : 'Call'}`}
               hotkey="c"
               variant="primary"
               onPress={() => void startCall($)}
@@ -481,8 +492,9 @@ export const register: Register = on => {
             <Text dimColor wrap="truncate-end">
               {view.phase === 'starting' ? 'opening the microphone and the voice…' : 'saying goodbye…'}
             </Text>
+            {view.phase === 'starting' ? tint(icon.hangup, END) : null}
             {view.phase === 'starting' ? (
-              <Button key="hangup" label={`${icon.hangup}Hang up`} hotkey="h" onPress={() => void hangUp($)} />
+              <Button key="hangup" label={`${inLabel(icon.hangup)}Hang up`} hotkey="h" onPress={() => void hangUp($)} />
             ) : null}
           </Box>
         </Box>
@@ -513,17 +525,19 @@ export const register: Register = on => {
             {canSteer && view.note !== '' ? <Text dimColor>{view.note}</Text> : null}
           </Box>
           <Box flexShrink={0} gap={1}>
+            {tint(icon.steer, QUEUE)}
             <Button
               key="steer"
-              label={`${icon.steer}Steer`}
+              label={`${inLabel(icon.steer)}Steer`}
               hotkey="s"
               variant={canSteer ? 'primary' : 'secondary'}
               dimColor={!canSteer}
               onPress={() => void steer($)}
             />
+            {tint(icon.hangup, END)}
             <Button
               key="hangup"
-              label={`${icon.hangup}Hang up`}
+              label={`${inLabel(icon.hangup)}Hang up`}
               hotkey="h"
               variant="secondary"
               onPress={() => void hangUp($)}
