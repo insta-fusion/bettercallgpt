@@ -403,6 +403,7 @@ class AgentLoop:
         request_id = self._next_id("req")
         item_id = f"{request_id}:steer"
         self.log.complete_transcript(item_id, text)
+        self.log.retire_candidate(item_id)
         self.log.note_turn(OPERATOR_SPEAKER, text)
         await self.ledger.append({"kind": "heard", "item_id": item_id, "text": text,
                                   "failed": False, "origin": "steer"})

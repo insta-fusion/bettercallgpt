@@ -284,6 +284,11 @@ class SteerClaim(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loop.backend.sends, [("先跑测试", "req-1", "now", "先跑测试", "先跑测试")])
         kinds = [row["kind"] if isinstance(row, dict) else row[0] for row in loop.ledger.rows]
         self.assertEqual(kinds, ["heard", "op", "outcome"], "written ahead of the send")
+        # The next delegation still joins its own span: the Steer's item is no candidate.
+        loop.log.commit_input("d1:span")
+        loop.log.complete_transcript("d1:span", "再看一下设计")
+        loop.log.response_created("d1", "user")
+        self.assertEqual(loop.log.join("d1"), ("d1:span", "joined"))
 
 
 class LedgerStamps(unittest.TestCase):
