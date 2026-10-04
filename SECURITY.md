@@ -18,13 +18,20 @@ acknowledgment within a week.
   `classic.PermissionRequest` only to write `permission.json` and always returns what the rest
   of the chain returned. Any path where it answers, alters or hides a permission request is a
   vulnerability.
-- **A call or a Steer you did not press.** The hooks module starts the voice process, and ends
-  Claude's running turn, only from your press of `Call` / `Steer` (or `/call`, `/steer`). The
-  `--mod` start it uses skips the transcript check, so the voice process accepts it only when
-  Claude Code itself spawned the command (its direct child, or `uvx`'s child under it). Any path
-  where a script, a tool call or a spoken word opens the microphone this way, or ends a turn,
-  is a vulnerability. A tool call whose own command line replaces its shell with this start is
-  the known edge: it goes through your permission settings like any other command.
+- **The hooks module calling or steering without your press.** The module starts the voice
+  process, and ends Claude's running turn, only from your press of `Call` / `Steer` (or `/call`,
+  `/steer`). Any path where the module does either by itself, or on a spoken word, is a
+  vulnerability.
+- **A `--mod` start that Claude Code did not spawn.** That start skips the transcript check, so
+  the voice process accepts it only when Claude Code itself spawned the command (its direct
+  child, or `uvx`'s child under it). A script under a tool call that opens the microphone this
+  way is a vulnerability. Known edge: a tool call whose own command line replaces its shell with
+  this start; it goes through your permission settings like any other command.
+- **Not a boundary: the local control commands.** `bettercallgpt stop` and `bettercallgpt steer`
+  are ordinary commands for the session's own call: anything running as you can run them, and
+  `steer` sends the words the call has heard and not handed over, ending Claude's running turn.
+  When Claude runs one, your permission settings decide. They send only what you said to your
+  own session, and approve nothing.
 - **Relay to the wrong session.** The daemon attaches only to the session that launched it,
   with zero keystrokes, proven one of two ways. Without a screen (any terminal): it descends
   from that session's `claude` process, the session's own transcript holds exactly one fresh

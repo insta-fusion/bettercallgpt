@@ -138,8 +138,10 @@ Voice Live (delete the `VOICE_LIVE_PROVIDER=gpt_live` line).
     refuses this kind of start unless Claude Code itself spawned it, so a script running under
     a tool call cannot pass for your press.
   - **`Steer`** sends what you said and the voice has not handed over yet, right now, and ends
-    Claude's running turn so your words are read next. Only your press does this; nothing is
-    sent twice. Words wait unsent only on the GPT-Live voice; on Voice Live (the default)
+    Claude's running turn so your words are read next. The plugin does this only on your press; nothing is
+    sent twice. (`bettercallgpt steer` and `stop` are ordinary local commands, like `stop`
+    always was: run from a shell they act on this session's call, and when Claude runs one it
+    goes through your permission settings.) Words wait unsent only on the GPT-Live voice; on Voice Live (the default)
     each request is handed over as you finish it, and `Steer` brings a waiting message forward.
   - **`Hang up`** ends the call (so does `/clear` or closing the session). `/call`, `/steer`
     and `/hangup` do the same as the buttons; `/call-icons` picks the symbols.

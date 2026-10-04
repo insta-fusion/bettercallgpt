@@ -98,7 +98,7 @@ marketplace：`/plugin marketplace add insta-fusion/bettercallgpt`，再 `/plugi
 - **插件的命令是三个小文件**（[plugin/commands/](plugin/commands/)），只有你能运行，语音进程只在通话期间运行。它们通过 `uvx` 运行 GitHub 上打了标签的发布版本；发布版本用不可更改的 GitHub release，标签发布后不能再改指。
 - **外加一个通话控制条**（[plugin/hooks/register.tsx](plugin/hooks/register.tsx)；需要 Claude Code 2.1.287 及以上，命令行和桌面版 Code 标签页都能用）。它在输入框上方显示一行：
   - **`Call`**：把语音进程作为你这个 Claude Code 进程的子进程启动。你按下这一下就是同意：不跑模型回合，也不弹权限确认。语音进程只接受 Claude Code 自己启动的这种调用，工具调用里跑的脚本冒充不了你的按键。
-  - **`Steer`**：把你说了、语音还没转交的话立刻发出去，并结束 Claude 正在跑的回合，让它下一步就读到。只有你按下才会这样做，同一句话不会发两次。只有 GPT-Live 语音会出现“说了还没发”的话；默认的 Voice Live 在你说完时就转交请求，这时 `Steer` 的作用是让排队的消息先被读到。
+  - **`Steer`**：把你说了、语音还没转交的话立刻发出去，并结束 Claude 正在跑的回合，让它下一步就读到。插件只在你按下时才这样做，同一句话不会发两次。（`bettercallgpt steer` 和 `stop` 是普通的本地命令：在命令行里运行会作用于这个会话的通话；由 Claude 运行时，要过你的权限设置。）只有 GPT-Live 语音会出现“说了还没发”的话；默认的 Voice Live 在你说完时就转交请求，这时 `Steer` 的作用是让排队的消息先被读到。
   - **`Hang up`**：挂断（`/clear` 或关闭会话也会挂断）。`/call`、`/steer`、`/hangup` 和按钮作用相同；`/call-icons` 选图标。
   - 通话中这一行显示你最近说的、还没发出的 60 个字符（密钥会被遮住），以及有几条语音消息在 Claude 的队列里等着。两者都读自通话状态目录（`0700`）里的 `status.json`。
   - 它从不回答权限请求，也不改动确认框显示的内容。通话期间 Claude 发起权限请求时，它把 `permission.json`（工具名和一行摘要：Bash 命令、文件路径或 MCP 工具名）写进同一个状态目录，让语音告诉你 Claude 在请求什么、请你在键盘上回答。这类请求也可能随后被别的 hook 或 Claude Code 自己决定、根本不弹框；沙箱的网络确认不在其中。

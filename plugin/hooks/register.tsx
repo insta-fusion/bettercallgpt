@@ -30,6 +30,8 @@ const TICK_MS = 500
 const IDLE_TICKS = 4
 // A Hang up the voice process has not answered after this long ends the child directly.
 const HANGUP_BOUND_MS = 8000
+// An installed command that does not answer `--help` in this long is passed over.
+const PROBE_BOUND_MS = 5000
 // Longer than this after flattening, no summary is written at all (the tool's name still is):
 // a cut command could split a credential the voice process would then fail to mask.
 const SUMMARY_MAX = 2000
@@ -171,7 +173,7 @@ async function launcher($: EngineInterface): Promise<string[]> {
   // An installed command from before the call console knows neither `--mod` nor `steer`.
   const fits = (bin: string) =>
     $.process
-      .run([bin, '--help'])
+      .run([bin, '--help'], { timeoutMs: PROBE_BOUND_MS })
       .then(result => result.exitCode === 0 && result.stdout.includes('--mod'), () => false)
   let found = await $.process
     .run(['/bin/sh', '-c', 'command -v bettercallgpt'])
