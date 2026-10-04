@@ -43,6 +43,13 @@ const FILE_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit'
 // A spoken message as it arrives in the session: its text ends with the voice tag.
 const VOICE_TAG = /⟨v#[^⟩]*⟩\s*$/
 
+// The band's colors: the brand's yellow, and plain terminal colors for the states.
+const BRAND = '#F5C518'
+const LIVE = 'green'
+const WARN = 'yellow'
+const QUEUE = 'cyan'
+const WORK = 'magenta'
+
 export const KEYBOARD = "voice can't approve, use your keyboard"
 export const IDLE: CallView = { phase: 'idle', unsent: '', queued: 0, working: false, note: '' }
 
@@ -351,9 +358,12 @@ export const register: Register = on => {
         <Box flexDirection="column">
           {below}
           <Box>
-            <Button key="call" label="Call" hotkey="c" onPress={() => void startCall($)} />
-            <Text dimColor wrap="truncate-end">
-              {view.note === '' ? ' Better Call GPT · talk to this session' : ` ${view.note}`}
+            <Text color={BRAND} bold>
+              ☎ Better Call GPT{' '}
+            </Text>
+            <Button key="call" label="Call" hotkey="c" variant="primary" onPress={() => void startCall($)} />
+            <Text color={view.note === '' ? undefined : WARN} dimColor={view.note === ''} wrap="truncate-end">
+              {view.note === '' ? ' talk to this session · /call' : ` ${view.note}`}
             </Text>
           </Box>
         </Box>
@@ -364,28 +374,48 @@ export const register: Register = on => {
         <Box flexDirection="column">
           {below}
           <Box>
-            <Text>Calling… </Text>
+            <Text color={BRAND} bold>
+              ☎ Calling…{' '}
+            </Text>
             <Button key="hangup" label="Hang up" hotkey="h" onPress={() => void hangUp($)} />
           </Box>
         </Box>
       )
     }
-    const parts = [view.phase === 'ending' ? 'Hanging up…' : '● On a call']
-    if (view.unsent !== '') parts.push(`heard, not sent: «${view.unsent}»`)
-    if (view.queued > 0) parts.push(`${view.queued} waiting for Claude`)
-    if (view.working) parts.push('Claude is working')
-    if (view.note !== '') parts.push(view.note)
+    const isEnding = view.phase === 'ending'
+    const isQuiet = view.unsent === '' && view.queued === 0 && !view.working
     return (
       <Box flexDirection="column">
         {below}
         <Box>
-          <Text wrap="truncate-end">{parts.join(' · ')} </Text>
-          <Button key="steer" label="Steer" hotkey="s" onPress={() => void steer($)} />
+          <Text color={isEnding ? WARN : LIVE} bold>
+            {isEnding ? '◌ Hanging up…' : '● LIVE'}{' '}
+          </Text>
+          {isQuiet && !isEnding ? <Text dimColor>listening </Text> : null}
+          {view.unsent === '' ? null : (
+            <Text color={WARN} wrap="truncate-end">
+              ✎ heard, not sent: «{view.unsent}»{' '}
+            </Text>
+          )}
+          {view.queued === 0 ? null : (
+            <Text color={QUEUE} bold>
+              ⇪ {view.queued} waiting for Claude{' '}
+            </Text>
+          )}
+          {view.working ? <Text color={WORK}>⚙ Claude working </Text> : null}
+          {view.note === '' ? null : <Text dimColor>{view.note} </Text>}
+          <Button
+            key="steer"
+            label="Steer"
+            hotkey="s"
+            variant={view.unsent !== '' || view.queued > 0 ? 'primary' : 'secondary'}
+            onPress={() => void steer($)}
+          />
           <Text> </Text>
-          <Button key="hangup" label="Hang up" hotkey="h" onPress={() => void hangUp($)} />
+          <Button key="hangup" label="Hang up" hotkey="h" variant="secondary" onPress={() => void hangUp($)} />
         </Box>
         <Text dimColor wrap="truncate-end">
-          {KEYBOARD}
+          {KEYBOARD} · /steer · /hangup
         </Text>
       </Box>
     )

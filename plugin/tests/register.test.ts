@@ -254,11 +254,11 @@ describe('the call console', () => {
     const nonce = env?.NONCE ?? ''
     expect(nonce).toMatch(/^mod-[a-z0-9]+-[a-z0-9]+$/)
     expect(argv).toEqual([BIN, '--session', SID, '--nonce', nonce, '--mod', 'start'])
-    expect(await ui.find({ text: 'Calling… ' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '☎ Calling… ' })).toBeDefined()
 
     await clock.advance(500) // status.json is live now
     expect(await ui.find({ type: 'Button', key: 'steer' })).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: KEYBOARD }))?.props.dimColor).toBe(true)
+    expect((await ui.find({ type: 'Text', text: `${KEYBOARD} · /steer · /hangup` }))?.props.dimColor).toBe(true)
 
     await ui.press({ key: 'call' }).catch(() => undefined) // no Call button on a call
     expect(spawned).toHaveLength(1)
@@ -317,7 +317,10 @@ describe('the call console', () => {
     await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
     await clock.advance(500)
-    expect(await ui.find({ text: '● On a call · heard, not sent: «先跑一下测试» · 2 waiting for Claude ' })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: '● LIVE ' }))?.props.color).toBe('green')
+    expect((await ui.find({ type: 'Text', text: '✎ heard, not sent: «先跑一下测试» ' }))?.props.color).toBe('yellow')
+    expect((await ui.find({ type: 'Text', text: '⇪ 2 waiting for Claude ' }))?.props.color).toBe('cyan')
+    expect((await ui.find({ type: 'Button', key: 'steer' }))?.props.variant).toBe('primary')
   })
 
   test('Steer with unsent words asks the voice process once and ends no turn', async ($: Engine, on: On) => {
