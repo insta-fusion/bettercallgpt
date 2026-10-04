@@ -19,12 +19,31 @@ NONCE = "modnonce-51ab07c3"
 
 
 class ModBinding(unittest.TestCase):
-    def _bind(self, *, registry=REGISTRY, owner=OWNER, nonce=NONCE, env_nonce=NONCE):
+    def _bind(self, *, registry=REGISTRY, owner=OWNER, nonce=NONCE, env_nonce=NONCE,
+              spawned=True):
         with mock.patch.object(paneg, "owner_fingerprint", return_value=owner):
             return paneg.bind_from_mod(
                 nonce=nonce, session_id=REGISTRY["sessionId"], ancestor_pid=REGISTRY["pid"],
                 registry=registry, ps_timeout=1.0, start_granularity=2.0,
-                now=lambda: 5.0, env_nonce=env_nonce)
+                now=lambda: 5.0, env_nonce=env_nonce, spawned=spawned)
+
+    def test_a_command_claude_did_not_start_itself_is_refused(self):
+        binding = self._bind(spawned=False)
+        self.assertFalse(binding["bound"])
+        self.assertEqual(binding["refusal"], paneg.REFUSE_NOT_SPAWNED)
+
+    def test_started_by_claude_is_its_child_or_uvx_child_never_a_shell_under_it(self):
+        from voice.app import daemon
+
+        parents = {50: 10, 60: 40, 40: 10, 70: 41, 41: 10}
+        names = {40: "uvx", 41: "zsh"}
+        check = lambda me: daemon.started_by_claude(
+            10, ppid=lambda: parents[me], parent_of=parents.get,
+            name_of=lambda pid: names.get(pid, ""))
+        self.assertTrue(check(50))       # Claude's own child: the module's spawn
+        self.assertTrue(check(60))       # through uvx, itself Claude's child
+        self.assertFalse(check(70))      # a shell in between: a tool call's command
+        self.assertFalse(daemon.started_by_claude(0, ppid=lambda: 10))
 
     def test_bound_without_a_transcript_launch(self):
         binding = self._bind()

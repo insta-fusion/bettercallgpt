@@ -39,6 +39,12 @@ Approvals are always answered on the keyboard. In any terminal (and the desktop 
 the plugin's hooks module also tells the call when Claude makes a permission request, by writing
 `permission.json` into the call's state directory. It is a request, not proof a dialog is on
 screen: another hook or Claude Code may decide it, and sandbox network prompts are not covered.
+On Claude Code 2.1.287+ the same module draws the call row above the prompt (`Call`, `Steer`,
+`Hang up`). `Call` starts `bettercallgpt --mod start` as Claude Code's own child with a fresh
+nonce: there is no Bash call in the transcript to find, so this start binds on ancestry, the
+session registry and the nonce, and is refused unless Claude Code itself spawned it. `Steer` runs
+`bettercallgpt steer`: the voice process sends what it heard and has not handed over as one
+request that ends Claude's running turn.
 On an Orca pane, when the pane already announced a dialog showing the same tool and command,
 the request is not said twice (best effort). The session id comes from
 `CLAUDE_CODE_SESSION_ID` (`VOICE_SESSION_ID` overrides it). The controls address a session by id: from the agent's own Bash

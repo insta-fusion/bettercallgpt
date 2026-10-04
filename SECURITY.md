@@ -18,6 +18,13 @@ acknowledgment within a week.
   `classic.PermissionRequest` only to write `permission.json` and always returns what the rest
   of the chain returned. Any path where it answers, alters or hides a permission request is a
   vulnerability.
+- **A call or a Steer you did not press.** The hooks module starts the voice process, and ends
+  Claude's running turn, only from your press of `Call` / `Steer` (or `/call`, `/steer`). The
+  `--mod` start it uses skips the transcript check, so the voice process accepts it only when
+  Claude Code itself spawned the command (its direct child, or `uvx`'s child under it). Any path
+  where a script, a tool call or a spoken word opens the microphone this way, or ends a turn,
+  is a vulnerability. A tool call whose own command line replaces its shell with this start is
+  the known edge: it goes through your permission settings like any other command.
 - **Relay to the wrong session.** The daemon attaches only to the session that launched it,
   with zero keystrokes, proven one of two ways. Without a screen (any terminal): it descends
   from that session's `claude` process, the session's own transcript holds exactly one fresh
@@ -59,6 +66,10 @@ acknowledgment within a week.
   tool's name, left out when longer than 2000 characters) and the call's instance id, which the
   voice process reads to say what Claude is asking for. Known credential values are masked in the
   whole summary before it is shortened for speech.
+- While a call runs, `status.json` also holds what the call console draws: the last 60
+  characters you said that are not handed over yet (known credential values masked), the tags
+  of spoken messages waiting in the session's queue, and the last Steer's result. `steer.json`
+  holds one Steer press (an id, a time and the call's instance id).
 - For launches without `--terminal`, each bound nonce is claimed once as an empty file under
   `~/.local/state/voice-launch-claims/<session>/` (a fixed location, whatever the state
   directory setting).

@@ -10,6 +10,10 @@ your keyboard. macOS only.
 - `/bettercallgpt:status` shows whether the call is live.
 - `/bettercallgpt:off` ends the call.
 
+On Claude Code 2.1.287+ (CLI and the desktop Code tab) a row above the prompt does the same with one
+press: **Call**, **Steer** (send what you just said now; Claude's running turn makes way) and
+**Hang up**. `/call`, `/steer` and `/hangup` are the same actions; `/call-icons` picks the symbols.
+
 ## What it runs, sends and fetches
 
 - **Runs:** the `bettercallgpt` command from this repository's tagged release, through `uvx`, as a local
@@ -24,17 +28,25 @@ your keyboard. macOS only.
 - **Writes:** a conversation ledger and status files for each call in a per-user state directory
   that only you can open (0700). They stay on your machine.
 - **Fetches:** the tagged release from GitHub, on first use.
-- **Mod (one hooks module, `hooks/register.tsx`; the hooks module needs Claude Code 2.1.287+, tested
-  with 2.1.287):** runs inside Claude Code and only observes. In every session where the plugin is
-  loaded it checks every 2 seconds whether this session is on a call: it reads `VOICE_LISTEN_STATE_DIR`,
-  `XDG_STATE_HOME` and `HOME` to find the state directory and reads `status.json` there; no network.
-  During a call, when Claude makes a permission request, it writes `permission.json` (the tool's name
-  and a one-line summary) into that state directory, so the call can say what Claude is asking for.
-  That can include a request another hook or Claude Code then decides without asking you; sandbox
-  network prompts are not covered. It draws one dim line above the prompt during a call, under what
-  other mods draw there. It never answers or changes a request and sends nothing anywhere; with no
-  call it writes nothing. Turn it off with `"disableAllHooks": true` in your settings, or disable
-  the plugin.
+- **Mod (one hooks module, `hooks/register.tsx`; needs Claude Code 2.1.287+, tested with 2.1.287 and
+  2.1.288):** runs inside Claude Code and draws the call row above the prompt.
+  - **Call** starts the `bettercallgpt` command as a child of your Claude Code process: the installed
+    command when there is one, otherwise the tagged release through `uvx`. Your press is the consent;
+    no model turn runs and no permission prompt is shown. The voice process refuses this kind of
+    start unless Claude Code itself spawned it.
+  - **Steer** asks the voice process to send what you said and it has not handed over yet, and ends
+    Claude's running turn so that message is read next. Only your press does this.
+  - **Hang up**, `/clear` and closing the session end the call.
+  - It reads `VOICE_LISTEN_STATE_DIR`, `XDG_STATE_HOME` and `HOME` to find the state directory and
+    reads `status.json` there every 2 seconds (twice a second during a call). During a call that file
+    holds the last 60 characters you said that are not sent yet (credentials masked), which the row
+    shows. It keeps your symbol choice in the plugin's own store. It makes no network request itself.
+  - During a call, when Claude makes a permission request, it writes `permission.json` (the tool's
+    name and a one-line summary) into that state directory, so the call can say what Claude is asking
+    for. That can include a request another hook or Claude Code then decides without asking you;
+    sandbox network prompts are not covered. It never answers or changes a request.
+  - Turn it off with `"disableAllHooks": true` in your settings, or disable the plugin. The three
+    commands above keep working without it.
 
 ## Where it works
 

@@ -43,11 +43,12 @@ sequenceDiagram
     Note over You,CC: 权限确认只在你的键盘上回答，语音批准不了。
 ```
 
-1. **`/bettercallgpt:on`** 启动一个只绑定*当前*会话的语音进程：无需按键就能证明是哪个会话启动了它，其他一律拒绝。
+1. **按输入框上方的 `Call`**（或输入 `/bettercallgpt:on`），启动一个只绑定*当前*会话的语音进程：无需按键就能证明是哪个会话启动了它，其他一律拒绝。
 2. **你说话，全双工，用你的语言。** 开口先说中文，之后你上一句用什么语言它就用什么语言回；夹几个英文技术词不会让它换语言。由 GPT Realtime 判断哪些是闲聊、哪些是活。
 3. **活以你的原话转进会话**，带 `⟨v#n⟩` 标记，Claude 会把它当作你在说话。
 4. **结果出来就用语音告诉你**；干到一半可以问“进度怎么样？”
-5. **结束**：说一声“好了”、输入 `/bettercallgpt:off`，或者安静 10 分钟。
+5. **话说完了，Claude 还在忙？** 按 **`Steer`**：你的话立刻送进去，Claude 正在跑的回合给它让路。
+6. **结束**：说一声“好了”、按 `Hang up`（或输入 `/bettercallgpt:off`），或者安静 10 分钟。
 
 ## 一次安装
 
@@ -59,7 +60,7 @@ npx skills add insta-fusion/bettercallgpt -g      # 需要 Node；macOS + Claude
 Claude Code 插件、建一个空的 key 文件、再跑一遍自检。你自己只做两件事：
 
 1. **把 key 粘进它告诉你的那个文件**（Azure Voice Live；OpenAI Realtime 还在实验阶段）。安装过程不会问你要 key——也别把 key 发到聊天里。
-2. **在新开的 Claude Code 会话里输入 `/bettercallgpt:on`**，批准一次启动。听到上扬的提示音，就通上了。
+2. **在新开的 Claude Code 会话里先发一条消息，再按输入框上方的 `Call`**（Claude Code 2.1.287 及以上）。旧版本输入 `/bettercallgpt:on` 并批准一次启动。听到上扬的提示音，就通上了。
 
 bettercallgpt 免费、MIT 开源；语音服务的费用走你自己的账户。不想用 skill？它已上架 Claude Code 官方插件目录：先装好
 [uv](https://docs.astral.sh/uv/)，再输入 `/plugin install better-call-gpt@anthropic-plugin-directory`，
@@ -84,15 +85,25 @@ marketplace：`/plugin marketplace add insta-fusion/bettercallgpt`，再 `/plugi
 | `/bettercallgpt:on` | 在当前会话开始通话 |
 | `/bettercallgpt:status` | 一行状态：阶段、连接 |
 | `/bettercallgpt:off` | 结束通话 |
+| `Call` · `/call` | 按一下就开始通话，不跑模型回合（Claude Code 2.1.287 及以上） |
+| `Steer` · `/steer` | 把刚说的话立刻发出去，Claude 正在跑的回合给它让路 |
+| `Hang up` · `/hangup` | 结束通话 |
 
 ## 安全设计
 
 - **口头说“同意”批准不了任何操作。** 语音回答不了权限请求，只能你在键盘上回答。（AI 本来就被允许做的事，仍由你的 Claude Code 权限设置决定。）
-- **启动前会先问你**——除非 Claude Code 处于 auto / bypass 模式，或有匹配的白名单规则。别把它加进白名单（不要 `bettercallgpt` 通配，也不要宽泛的 `uvx` 规则）：它会打开麦克风和付费连接。
+- **开始通话由你决定。** 按下 `Call` 就是你的同意；`/bettercallgpt:on` 启动前会先问你——除非 Claude Code 处于 auto / bypass 模式，或有匹配的白名单规则。别把它加进白名单（不要 `bettercallgpt` 通配，也不要宽泛的 `uvx` 规则）：它会打开麦克风和付费连接。
 - **什么会离开你的电脑：** 你的麦克风音频，以及语音需要用来聊工作的内容（你的提示、AI 的进度和结果、每个权限请求的一行摘要：工具名加命令或文件路径），会发给你配置的语音服务：Azure Voice Live、Azure GPT-Live API，或 OpenAI Realtime（实验性）。通话记录留在本地（`0600`）。详见 [SECURITY.md](SECURITY.md#privacy-notes)。
 - **只接入启动它的那个会话**，无需按键即可证明归属，其他一律拒绝。
-- **插件就是三个小命令文件**（[plugin/commands/](plugin/commands/)），只有你能运行，语音进程只在通话期间运行。它们通过 `uvx` 运行 GitHub 上打了标签的发布版本；发布版本用不可更改的 GitHub release，标签发布后不能再改指。
-- **外加一个只观察的 hooks 模块**（[plugin/hooks/register.tsx](plugin/hooks/register.tsx)）。它从不回答权限请求，也不改动确认框显示的内容。在加载了这个插件的每个会话里，它每 2 秒检查一次这个会话是否在通话：读取 `VOICE_LISTEN_STATE_DIR`、`XDG_STATE_HOME`、`HOME` 和本次通话的 `status.json`，不联网。通话期间 Claude 发起权限请求时，它把 `permission.json`（工具名和一行摘要：Bash 命令、文件路径或 MCP 工具名）写进同一个按会话划分的状态目录（`0700`），让语音告诉你 Claude 在请求什么、请你在键盘上回答，任何终端都行。这类请求也可能随后被别的 hook 或 Claude Code 自己决定、根本不弹框；沙箱的网络确认不在其中。通话期间它还在输入框上方显示一行灰色提示。不在通话时什么都不写。关闭方法：在 Claude Code 设置里加 `"disableAllHooks": true`（会关掉你所有的 hook），或在 `/plugin` 里停用这个插件。hooks 模块需要 Claude Code 2.1.287 及以上（已在 2.1.287 上测试）。
+- **插件的命令是三个小文件**（[plugin/commands/](plugin/commands/)），只有你能运行，语音进程只在通话期间运行。它们通过 `uvx` 运行 GitHub 上打了标签的发布版本；发布版本用不可更改的 GitHub release，标签发布后不能再改指。
+- **外加一个通话控制条**（[plugin/hooks/register.tsx](plugin/hooks/register.tsx)；需要 Claude Code 2.1.287 及以上，命令行和桌面版 Code 标签页都能用）。它在输入框上方显示一行：
+  - **`Call`**：把语音进程作为你这个 Claude Code 进程的子进程启动。你按下这一下就是同意：不跑模型回合，也不弹权限确认。语音进程只接受 Claude Code 自己启动的这种调用，工具调用里跑的脚本冒充不了你的按键。
+  - **`Steer`**：把你说了、语音还没转交的话立刻发出去，并结束 Claude 正在跑的回合，让它下一步就读到。只有你按下才会这样做，同一句话不会发两次。
+  - **`Hang up`**：挂断（`/clear` 或关闭会话也会挂断）。`/call`、`/steer`、`/hangup` 和按钮作用相同；`/call-icons` 选图标。
+  - 通话中这一行显示你最近说的、还没发出的 60 个字符（密钥会被遮住），以及有几条语音消息在 Claude 的队列里等着。两者都读自通话状态目录（`0700`）里的 `status.json`。
+  - 它从不回答权限请求，也不改动确认框显示的内容。通话期间 Claude 发起权限请求时，它把 `permission.json`（工具名和一行摘要：Bash 命令、文件路径或 MCP 工具名）写进同一个状态目录，让语音告诉你 Claude 在请求什么、请你在键盘上回答。这类请求也可能随后被别的 hook 或 Claude Code 自己决定、根本不弹框；沙箱的网络确认不在其中。
+  - 它每 2 秒（通话中每秒 2 次）读取 `VOICE_LISTEN_STATE_DIR`、`XDG_STATE_HOME`、`HOME` 和 `status.json`，自己不联网。没有安装 `bettercallgpt` 命令时，`Call` 和 `/bettercallgpt:on` 一样通过 `uvx` 运行打了标签的发布版本。
+  - 关闭方法：在 Claude Code 设置里加 `"disableAllHooks": true`（会关掉你所有的 hook），或在 `/plugin` 里停用这个插件。旧版 Claude Code 不显示这一行，`/bettercallgpt:on`、`:status`、`:off` 照常可用。
 
 ## 支持范围
 

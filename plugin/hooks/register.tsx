@@ -159,6 +159,7 @@ export function failure(stderr: string, code: unknown): string {
   const lines = stderr.split('\n').map(line => line.trim()).filter(line => line !== '')
   const last = (lines.pop() ?? '').replace(/^voice:\s*/, '')
   if (last.includes('bind_no_transcript')) return 'send Claude one message first, then call again'
+  if (last.includes('missing ')) return `${last.split(' — ')[0]} — add your key, see the README`
   if (last === '') return `the voice process ended (exit ${String(code)})`
   return last.length <= 160 ? last : `${last.slice(0, 159)}…`
 }
@@ -449,10 +450,20 @@ export const register: Register = on => {
     const inLabel = (symbol: string) => (isKeyed ? '' : symbol)
     const tint = (symbol: string, color: string) =>
       isKeyed ? (
-        <Text backgroundColor={color} color={INK} bold>
-          {` ${symbol} `}
-        </Text>
+        <Box flexShrink={0}>
+          <Text backgroundColor={color} color={INK} bold>
+            {` ${symbol} `}
+          </Text>
+        </Box>
       ) : null
+    // A state pill keeps its width: when the row is tight the words beside it are cut, never it.
+    const pill = (words: string, color: string) => (
+      <Box flexShrink={0}>
+        <Text backgroundColor={color} color={INK} bold>
+          {words}
+        </Text>
+      </Box>
+    )
     const isNarrow = e.props.bodyColumns < NARROW
     if (view.phase === 'idle') {
       const hasFailed = view.note !== ''
@@ -460,11 +471,7 @@ export const register: Register = on => {
         <Box flexDirection="column">
           {below}
           <Box gap={1}>
-            {hasFailed ? (
-              <Text backgroundColor={END} color={INK} bold>
-                {' ✕ CALL FAILED '}
-              </Text>
-            ) : null}
+            {hasFailed ? pill(' ✕ CALL FAILED ', END) : null}
             {tint(icon.call, LIVE)}
             <Button
               key="call"
@@ -490,9 +497,7 @@ export const register: Register = on => {
         <Box flexDirection="column">
           {below}
           <Box gap={1}>
-            <Text backgroundColor={WARN} color={INK} bold>
-              {view.phase === 'starting' ? ' ◌ CONNECTING ' : ' ◌ HANGING UP '}
-            </Text>
+            {pill(view.phase === 'starting' ? ' ◌ CONNECTING ' : ' ◌ HANGING UP ', WARN)}
             <Text dimColor wrap="truncate-end">
               {view.phase === 'starting' ? 'opening the microphone and the voice…' : 'saying goodbye…'}
             </Text>
@@ -515,9 +520,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
         {below}
         <Box gap={1}>
-          <Text backgroundColor={LIVE} color={INK} bold>
-            {` ${icon.live}LIVE `}
-          </Text>
+          {pill(` ${icon.live}LIVE `, LIVE)}
           <Box flexGrow={1} flexShrink={1} gap={1} overflow="hidden">
             {canSteer ? null : <Text dimColor>{view.note === '' ? 'listening' : view.note}</Text>}
             {isNarrow ? null : quote}

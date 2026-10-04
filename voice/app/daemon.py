@@ -130,16 +130,19 @@ def state_dir(session_id: str) -> Path:
     return Path(root) / session_id
 
 
-def atomic_write(path: Path, payload: dict[str, Any]) -> None:
+def atomic_write(path: Path, payload: dict[str, Any], *, durable: bool = True) -> None:
     """Replace the status file in one step. A statusline reading a half-written file would
-    print nothing at best and garbage at worst, and it reads on someone else's schedule."""
+    print nothing at best and garbage at worst, and it reads on someone else's schedule.
+    `durable=False` skips the fsync: the rename is still one step for a reader, and a write
+    made on every heard fragment must not wait for the disk."""
     voice_platform.private_dir(path.parent)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".status-", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False)
             handle.flush()
-            os.fsync(handle.fileno())
+            if durable:
+                os.fsync(handle.fileno())
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -193,6 +196,13 @@ class Status:
         self.data["ended"] = {"reason": reason, "ended_at": self._now()}
         self.data["at"] = self._now()
         self.publish()
+
+    def show(self, **fields: Any) -> None:
+        """`set` for what the band draws (unsent words, queued tags): it changes while the
+        operator speaks, so it is written without waiting for the disk."""
+        self.data.update(fields)
+        self.data["at"] = self._now()
+        atomic_write(self.path, self.data, durable=False)
 
     def publish(self) -> None:
         atomic_write(self.path, self.data)
@@ -609,6 +619,34 @@ def find_claude_ancestor(session_id: str, *, ppid=os.getppid,
     return 0
 
 
+def started_by_claude(claude_pid: int, *, ppid=os.getppid, parent_of=None,
+                      name_of=None) -> bool:
+    """Whether Claude itself started this command, as the plugin's hooks module does.
+
+    The module's spawn makes the launcher Claude's own child (measured), or `uvx`'s child when
+    the release runs through uvx. A command a tool call runs has a shell in between, so a
+    script under the session cannot pass for a press of Call by adding `--mod`."""
+    parent_of = parent_of or _parent_of
+    name_of = name_of or _name_of
+    parent = ppid()
+    if not claude_pid or not parent:
+        return False
+    if parent == claude_pid:
+        return True
+    return name_of(parent) in ("uv", "uvx") and parent_of(parent) == claude_pid
+
+
+def _name_of(pid: int) -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(["ps", "-o", "comm=", "-p", str(int(pid))],
+                             capture_output=True, text=True, timeout=PS_PROBE_BOUND_S)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return ""
+    return os.path.basename((out.stdout or "").strip())
+
+
 def _parent_of(pid: int) -> int:
     import subprocess
 
@@ -824,7 +862,7 @@ class VoiceDaemon:
         if getattr(self, "_shut", False):
             return
         try:
-            self.status.set(**fields)
+            self.status.show(**fields)
         except OSError as exc:             # a full disk must not end the call
             print(f"voice: status write failed: {exc.strerror or exc}", file=sys.stderr)
 
@@ -988,6 +1026,16 @@ class VoiceDaemon:
 
         if self.loop is None:
             self.build()
+        try:
+            # A TERM ends the session the same way a control `stop` does — goodbye, tone,
+            # device released — instead of killing it mid-word. Installed before the
+            # microphone and the paid socket open: the plugin ends its child this way, at any
+            # moment.
+            voice_platform.install_signal(
+                asyncio.get_running_loop(), signal.SIGTERM,
+                lambda: self._spawn(self.shutdown("terminated"), "shutdown"))
+        except (NotImplementedError, RuntimeError):
+            pass
         if not self.acquire_audio():
             self.status.end("audio busy")
             raise RuntimeError("audio-device busy (another voice surface is active)")
@@ -1004,15 +1052,6 @@ class VoiceDaemon:
                                       instance=self.status.data.get("instance"),
                                       on_steer=self.on_steer)
         self.control.start(asyncio.get_running_loop())
-        try:
-            # A TERM ends the session the same way a control `stop` does — goodbye, tone,
-            # device released — instead of killing it mid-word. Installed before the paid
-            # socket opens: the plugin ends its child this way, at any moment.
-            voice_platform.install_signal(
-                asyncio.get_running_loop(), signal.SIGTERM,
-                lambda: self._spawn(self.shutdown("terminated"), "shutdown"))
-        except (NotImplementedError, RuntimeError):
-            pass
         self.status.set(audio_ready=True, phase="connecting")
         session = self.session
         await session.start(self._session_config())
@@ -1637,7 +1676,8 @@ async def _handshake(session_id: str, args: argparse.Namespace) -> dict[str, Any
                 nonce=args.nonce, session_id=session_id, ancestor_pid=claude_pid,
                 registry=session_registry(claude_pid),
                 ps_timeout=PS_PROBE_BOUND_S, start_granularity=PS_START_GRANULARITY_S,
-                now=time.time, env_nonce=os.environ.get("NONCE"))
+                now=time.time, env_nonce=os.environ.get("NONCE"),
+                spawned=started_by_claude(claude_pid))
         else:
             binding = bind_without_screen(
                 nonce=args.nonce, session_id=session_id, ancestor_pid=claude_pid,
