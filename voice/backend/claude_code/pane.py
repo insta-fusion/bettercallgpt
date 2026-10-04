@@ -933,6 +933,36 @@ def bind_without_screen(*, nonce: str, session_id: str, ancestor_pid: int,
             "classification": None}
 
 
+def bind_from_mod(*, nonce: str, session_id: str, ancestor_pid: int,
+                  registry: dict | None, ps_timeout: float, start_granularity: float,
+                  now: Callable[[], float], env_nonce: str | None) -> dict:
+    """The binding for a call the plugin's hooks module started on the operator's own press.
+
+    Everything `bind_without_screen` checks except the launch line in the transcript: no model
+    turn ran this command, so there is no tool call to find. What stands in for it is the
+    press itself: the module mints a fresh nonce per press and hands it over in the
+    environment and on the command line; the launcher claims it single-use, as for any start."""
+    nonce = str(nonce or "")
+    refuse = {"bound": False, "handle": "", "hits": 0, "owner": {}, "incarnation": None,
+              "nonce": nonce}
+    if not nonce or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{5,63}", nonce):
+        return {**refuse, "refusal": REFUSE_BAD_NONCE}
+    if env_nonce != nonce:
+        return {**refuse, "refusal": REFUSE_NONCE_NOT_OURS}
+    owner = owner_fingerprint(ancestor_pid, ps_timeout=ps_timeout)
+    if not owner:
+        return {**refuse, "refusal": REFUSE_NO_OWNER}
+    claude, why = registry_claims(registry, pid=ancestor_pid, session_id=session_id,
+                                  owner=owner, start_granularity=start_granularity)
+    if claude is None:
+        return {**refuse, "refusal": REFUSE_REGISTRY, "detail": why}
+    return {"bound": True, "refusal": None, "nonce": nonce, "hits": 1,
+            "session_id": str(session_id), "handle": "", "proof": "mod",
+            "dialogs": False, "incarnation": None, "worktree_path": None,
+            "owner": owner, "claude": claude, "bound_at": now(),
+            "classification": None}
+
+
 class ScreenlessPane:
     """The pane seat when nothing reads a screen: it re-validates the owner and reports no
     dialog, ever. Same `observe` contract as `Pane`, so the adapter needs no branch."""

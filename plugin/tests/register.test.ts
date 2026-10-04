@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { BAND, summarize } from '../hooks/register'
+import { KEYBOARD, failure, liveFields, summarize } from '../hooks/register'
 
 const SID = '0b4e7c1a-9d2f-4e55-8a3b-1c2d3e4f5a6b'
 const OTHER_SID = '9f8e7d6c-5b4a-4321-8fed-cba987654321'
@@ -52,6 +52,8 @@ function world(on: On, { files, env = { HOME }, session = { id: SID }, gate, isW
     return { value: undefined }
   })
   on('session.id', () => ({ value: session.id }))
+  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('classic.PermissionRequest', ($, e) => {
     below.push(e)
@@ -176,7 +178,7 @@ describe('summarize', () => {
   })
 })
 
-describe('the band above the prompt', () => {
+describe('the call console', () => {
   const PROPS = {
     hasSurvey: false,
     isWorking: false,
@@ -187,112 +189,212 @@ describe('the band above the prompt', () => {
   }
   const BAND_SITE = { plugin: 'bettercallgpt', component: 'AbovePrompt', props: PROPS } as const
   const start = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const BIN = '/home/u/.local/bin/bettercallgpt'
 
-  test('shows only while this session is on a call, under what other mods draw', async ($: Engine, on: On) => {
-    const files = status({ ...LIVE, relay: 'probing' })
-    const { clock } = world(on, { files })
+  type Spawned = { argv: readonly string[]; env?: Record<string, string> }
+  /** The host's processes: `command -v`, the launcher's stop and steer, and the voice child,
+   * which runs until the test ends it (or exits at once with `exit`). */
+  function processes(on: On, files: Map<string, string>, options: { exit?: { code: number; stderr: string }; installed?: boolean } = {}) {
+    const runs: string[][] = []
+    const spawned: Spawned[] = []
+    const aborted: string[] = []
+    let end: (() => void) | undefined
+    on('process.run', ($, e) => {
+      runs.push([...e.argv])
+      if (e.argv[0] === '/bin/sh') {
+        const isInstalled = options.installed ?? true
+        return { value: { exitCode: isInstalled ? 0 : 1, stdout: isInstalled ? `${BIN}\n` : '', stderr: '' } }
+      }
+      if (e.argv.at(-1) === 'stop') end?.()
+      return { value: { exitCode: 0, stdout: '{}', stderr: '' } }
+    })
+    on('process.spawn', async function* ($, e) {
+      spawned.push({ argv: e.argv, env: e.env })
+      if (options.exit !== undefined) {
+        yield { stream: 'stderr' as const, text: options.exit.stderr }
+        return { value: { code: options.exit.code, signal: null } }
+      }
+      files.set(`${DIR}/status.json`, JSON.stringify(LIVE))
+      await new Promise<void>(resolve => {
+        end = resolve
+      })
+      files.delete(`${DIR}/status.json`)
+      return { value: { code: 0, signal: null } }
+    })
+    on('turn.abort', ($, e) => {
+      aborted.push(e.turnId)
+      return { value: undefined }
+    })
+    return { runs, spawned, aborted, end: () => end?.() }
+  }
+
+  test('no call: a Call button under what other mods draw, on terminal and desktop', async ($: Engine, on: On) => {
+    world(on, { files: new Map() })
+    processes(on, new Map())
     await start($)
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ ...BAND_SITE, surface })
-      expect(await ui.find({ text: BAND })).toBeUndefined()
-      expect(await ui.find({ text: OTHER_BAND })).toBeDefined()
-      await ui.unmount()
-    }
-
-    files.set(`${DIR}/status.json`, JSON.stringify(LIVE))
-    await clock.advance(2000)
-    for (const surface of ['terminal', 'desktop'] as const) {
-      const ui = await $.ui.mount({ ...BAND_SITE, surface })
-      expect((await ui.find({ type: 'Text', text: BAND }))?.props.dimColor).toBe(true)
+      expect(await ui.find({ type: 'Button', key: 'call' })).toBeDefined()
+      expect(await ui.find({ type: 'Button', key: 'hangup' })).toBeUndefined()
       expect(await ui.find({ text: OTHER_BAND })).toBeDefined() // composed, not replaced
       await ui.unmount()
     }
   })
 
-  test('a mounted band redraws when the call starts and ends', async ($: Engine, on: On) => {
+  test('Call starts the voice process as a child with a fresh nonce, and no model turn', async ($: Engine, on: On) => {
     const files = new Map<string, string>()
     const { clock } = world(on, { files })
+    const { spawned, runs, end } = processes(on, files)
     await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
-    expect(await ui.find({ text: BAND })).toBeUndefined()
+    await ui.press({ key: 'call' })
+    await clock.settle()
+    expect(spawned).toHaveLength(1)
+    const { argv, env } = spawned[0] as Spawned
+    const nonce = env?.NONCE ?? ''
+    expect(nonce).toMatch(/^mod-[a-z0-9]+-[a-z0-9]+$/)
+    expect(argv).toEqual([BIN, '--session', SID, '--nonce', nonce, '--mod', 'start'])
+    expect(await ui.find({ text: 'Calling… ' })).toBeDefined()
 
-    files.set(`${DIR}/status.json`, JSON.stringify(LIVE))
-    await clock.advance(2000)
-    expect(await ui.find({ text: BAND })).toBeDefined()
+    await clock.advance(500) // status.json is live now
+    expect(await ui.find({ type: 'Button', key: 'steer' })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: KEYBOARD }))?.props.dimColor).toBe(true)
 
-    files.set(`${DIR}/status.json`, JSON.stringify({ ...LIVE, phase: 'ended', ended: { reason: 'x' } }))
-    await clock.advance(2000)
-    expect(await ui.find({ text: BAND })).toBeUndefined()
-    await ui.unmount()
+    await ui.press({ key: 'call' }).catch(() => undefined) // no Call button on a call
+    expect(spawned).toHaveLength(1)
+
+    await ui.press({ key: 'hangup' })
+    await clock.settle()
+    expect(runs).toContainEqual([BIN, '--session', SID, 'stop'])
+    expect(await ui.find({ type: 'Button', key: 'call' })).toBeDefined()
   })
 
-  test('goes away when the heartbeat stops or the status turns unreadable', async ($: Engine, on: On) => {
+  test('without an installed bettercallgpt the pinned release runs through uvx', async ($: Engine, on: On) => {
+    const files = new Map<string, string>()
+    const { clock } = world(on, { files })
+    const { spawned, end } = processes(on, files, { installed: false })
+    await start($)
+    const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
+    await ui.press({ key: 'call' })
+    await clock.settle()
+    expect(spawned[0]?.argv.slice(0, 4)).toEqual([
+      'uvx',
+      '--from',
+      'git+https://github.com/insta-fusion/bettercallgpt@v0.2.0',
+      'bettercallgpt',
+    ])
+    end()
+    await clock.settle()
+  })
+
+  test('a start that fails says why in the band and offers Call again', async ($: Engine, on: On) => {
+    const files = new Map<string, string>()
+    const { clock } = world(on, { files })
+    processes(on, files, { exit: { code: 1, stderr: 'voice: audio-device busy (another voice surface is active)\n' } })
+    await start($)
+    const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
+    await ui.press({ key: 'call' })
+    await clock.settle()
+    expect(await ui.find({ type: 'Button', key: 'call' })).toBeDefined()
+    expect(await ui.find({ text: ' audio-device busy (another voice surface is active)' })).toBeDefined()
+  })
+
+  test('a call started by /bettercallgpt:on shows the same console and goes when its heartbeat stops', async ($: Engine, on: On) => {
     const files = status(LIVE)
     const { clock } = world(on, { files })
+    processes(on, files)
     await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
-    expect(await ui.find({ text: BAND })).toBeDefined()
-
+    expect(await ui.find({ type: 'Button', key: 'hangup' })).toBeDefined()
     await clock.advance(26_000) // `at` is now 31 s old: the voice process stopped writing
-    expect(await ui.find({ text: BAND })).toBeUndefined()
-
-    files.set(`${DIR}/status.json`, JSON.stringify({ ...LIVE, at: (NOW_MS + 26_000) / 1000 }))
-    await clock.advance(2000)
-    expect(await ui.find({ text: BAND })).toBeDefined()
-
-    files.set(`${DIR}/status.json`, '{"phase": "runn') // malformed: no call, not the last answer
-    await clock.advance(2000)
-    expect(await ui.find({ text: BAND })).toBeUndefined()
-    await ui.unmount()
+    expect(await ui.find({ type: 'Button', key: 'call' })).toBeDefined()
   })
 
-  test('follows the session after /clear', async ($: Engine, on: On) => {
-    const session = { id: SID }
-    const { clock } = world(on, { files: status(LIVE), session })
+  test('shows what was heard and not sent, and what waits for Claude', async ($: Engine, on: On) => {
+    const files = status({ ...LIVE, unsent: { chars: 6, preview: '先跑一下测试' }, queued: ['req-3', 'req-4'] })
+    const { clock } = world(on, { files })
+    processes(on, files)
     await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
-    expect(await ui.find({ text: BAND })).toBeDefined()
-
-    session.id = OTHER_SID // /clear: a new session id, and no call bound to it
-    await clock.advance(2000)
-    expect(await ui.find({ text: BAND })).toBeUndefined()
-    await ui.unmount()
+    await clock.advance(500)
+    expect(await ui.find({ text: '● On a call · heard, not sent: «先跑一下测试» · 2 waiting for Claude ' })).toBeDefined()
   })
 
-  test('one read at a time, and a read for a session left behind is dropped', async ($: Engine, on: On) => {
-    const session = { id: SID }
-    const files = new Map<string, string>()
-    const gate: { held: Promise<void> | undefined } = { held: undefined }
-    const { clock, reads } = world(on, { files, session, gate })
-    await start($) // no call yet
+  test('Steer with unsent words asks the voice process once and ends no turn', async ($: Engine, on: On) => {
+    const files = status({ ...LIVE, unsent: { chars: 3, preview: '停一下' }, queued: [] })
+    const { clock } = world(on, { files })
+    const { runs, aborted } = processes(on, files)
+    await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
-    expect(await ui.find({ text: BAND })).toBeUndefined()
-
-    // SID's call goes live, but the next read of its status is slow.
-    files.set(`${DIR}/status.json`, JSON.stringify(LIVE))
-    let release = () => {}
-    gate.held = new Promise(resolve => (release = resolve))
-    await clock.advance(2000) // the read starts for SID and waits on the disk
-    const started = reads.length
-    expect(started).toBe(1)
-    await clock.advance(2000) // ticks while it is out start no second read
-    await clock.advance(2000)
-    expect(reads.length).toBe(started)
-
-    session.id = OTHER_SID // /clear while the read is out
-    gate.held = undefined
-    release()
+    await ui.press({ key: 'steer' })
     await clock.settle()
-    // That read found SID's call live; the band now belongs to OTHER_SID, so it must not land.
-    expect(await ui.find({ text: BAND })).toBeUndefined()
-    await ui.unmount()
+    expect(runs).toContainEqual([BIN, '--session', SID, 'steer'])
+    expect(aborted).toEqual([])
+  })
+
+  test('Steer with a message waiting behind a running turn ends that turn, once', async ($: Engine, on: On) => {
+    const files = status({ ...LIVE, queued: ['req-7'] })
+    const { clock } = world(on, { files })
+    const { runs, aborted } = processes(on, files)
+    await start($)
+    const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
+    const { turnId } = await $.turn.start({ text: 'a long task', turnId: 'turn-1' })
+    await ui.press({ key: 'steer' })
+    await clock.settle()
+    expect(aborted).toEqual([turnId])
+    expect(runs.some(argv => argv.at(-1) === 'steer')).toBe(false) // nothing unsent to ask for
+    await clock.advance(2000) // still queued on later ticks: no second abort
+    expect(aborted).toEqual([turnId])
+  })
+
+  test('Steer with nothing unsent and nothing waiting does nothing', async ($: Engine, on: On) => {
+    const files = status(LIVE)
+    const { clock } = world(on, { files })
+    const { runs, aborted } = processes(on, files)
+    await start($)
+    const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
+    await $.turn.start({ text: 'a long task', turnId: 'turn-1' })
+    await ui.press({ key: 'steer' })
+    await clock.settle()
+    expect(aborted).toEqual([])
+    expect(runs.some(argv => argv.at(-1) === 'steer')).toBe(false)
+  })
+
+  test('with no turn running, a waiting message needs no Steer and none is kept for later', async ($: Engine, on: On) => {
+    const files = status({ ...LIVE, unsent: { chars: 2, preview: '你好' }, queued: [] })
+    const { clock } = world(on, { files })
+    const { aborted } = processes(on, files)
+    await start($)
+    const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
+    await ui.press({ key: 'steer' })
+    await clock.settle()
+    await $.turn.start({ text: 'a later task', turnId: 'turn-2' })
+    files.set(`${DIR}/status.json`, JSON.stringify({ ...LIVE, queued: ['req-9'] }))
+    await clock.advance(1000)
+    expect(aborted).toEqual([]) // the earlier press does not end a later turn
   })
 
   test('yields to a survey', async ($: Engine, on: On) => {
     world(on, { files: status(LIVE) })
+    processes(on, new Map())
     await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal', props: { ...PROPS, hasSurvey: true } })
-    expect(await ui.find({ text: BAND })).toBeUndefined()
-    await ui.unmount()
+    expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  })
+})
+
+describe('reading the voice process', () => {
+  test('liveFields takes the preview and the queue length, and nothing malformed', () => {
+    expect(liveFields({ unsent: { chars: 3, preview: 'abc' }, queued: ['a', 'b'] })).toEqual({ unsent: 'abc', queued: 2 })
+    expect(liveFields({})).toEqual({ unsent: '', queued: 0 })
+    expect(liveFields({ unsent: 'x', queued: 'y' })).toEqual({ unsent: '', queued: 0 })
+  })
+
+  test('failure gives the last line, short, and a plain hint for a session with no message yet', () => {
+    expect(failure('a\nvoice: claude_code: bind_no_transcript — no transcript .jsonl\n', 1)).toBe(
+      'send Claude one message first, then call again',
+    )
+    expect(failure('', 3)).toBe('the voice process ended (exit 3)')
+    expect(failure(`voice: ${'x'.repeat(300)}`, 1)).toHaveLength(160)
   })
 })

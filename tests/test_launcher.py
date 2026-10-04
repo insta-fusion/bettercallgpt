@@ -281,28 +281,47 @@ class PluginTests(unittest.TestCase):
                                              "types"})
         self.assertEqual(manifest["types"], "./types/index.d.ts")
 
-    def test_one_hooks_module_that_only_observes(self):
-        """README's promise, held on the source: one module; it hooks a permission prompt
-        only to observe it (never a decision), reads status.json, writes permission.json, and
-        reaches nothing else (no process, network, tool, model, prompt or message calls)."""
+    def test_one_hooks_module_the_call_console(self):
+        """The plugin's promise, held on the source: one module. It never decides a permission
+        request (it observes one, to announce it). It runs only the voice launcher (start, stop,
+        steer) and a PATH lookup, reads status.json, writes permission.json, and the one thing
+        it does to Claude's work is end the running turn on the operator's Steer. No network,
+        tool, model, prompt or message calls."""
         import re
         hooks = self.ROOT / "plugin" / "hooks"
         self.assertEqual(json.loads((hooks / "hooks.json").read_text()),
                          {"modules": ["./register.tsx"]})
         source = (hooks / "register.tsx").read_text()
         self.assertEqual(set(re.findall(r"\bon\('([^']+)'", source)),
-                         {"classic.PermissionRequest", "session.start", "ui.render"})
+                         {"classic.PermissionRequest", "session.start", "session.end",
+                          "command.run", "turn.start", "turn.complete", "prompt.submit",
+                          "ui.render"})
         for word in ("decision", "behavior", "updatedInput", "updatedPermissions", "deny",
-                     "block", "interrupt", "import("):
+                     "block", "import("):
             self.assertNotIn(word, source, word)
         calls = set(re.findall(r"\$\.([a-z]+\.[a-zA-Z]+)\(", source))
         self.assertLessEqual(calls, {"env.get", "fs.exists", "fs.read", "fs.write", "clock.now",
-                                     "clock.every", "session.id", "ui.resolve"})
-        self.assertEqual(re.findall(r"\$\.fs\.write\(`\$\{call\.dir\}/([^`]+)`", source),
+                                     "clock.every", "clock.after", "session.id", "ui.resolve",
+                                     "command.register", "process.spawn", "turn.abort"})
+        # $.process.run is written across lines (`$.process\n.run([`): count it by its argv.
+        self.assertEqual(source.count("$.process.spawn("), 1)
+        self.assertEqual(source.count(".run(["), 3)
+        self.assertEqual(sorted(re.findall(r"'--session', sessionId, (?:'--nonce', nonce, '--mod', )?'(\w+)'\]", source)),
+                         ["start", "steer", "stop"])
+        self.assertIn(".run(['/bin/sh', '-c', 'command -v bettercallgpt'])", source)
+        self.assertEqual(source.count("$.turn.abort("), 1)
+        # The permission hook hands back exactly what the chain beneath answered.
+        hook = source[source.index("on('classic.PermissionRequest'"):source.index("on('session.start'")]
+        self.assertEqual(hook.count("return next(e)"), 1)
+        self.assertEqual(re.findall(r"\$\.fs\.write\(`\$\{live\.dir\}/([^`]+)`", source),
                          ["permission.json"])
         self.assertEqual(source.count("$.fs.write("), 1)
         self.assertEqual(re.findall(r"\$\.fs\.read\(([^)]*)\)", source), ["statusPath"])
         self.assertIn("const statusPath = `${dir}/status.json`", source)
+        # prompt.submit is only watched: the text and origin go on unchanged.
+        submit = source[source.index("on('prompt.submit'"):source.index("on('ui.render'")]
+        self.assertIn("return next(e)", submit)
+        self.assertNotIn("next({", source)
 
     def test_controls_report_only_what_status_confirms(self):
         for name in ("off",):

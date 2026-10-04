@@ -1,22 +1,35 @@
-// Better Call GPT's hooks module. It only observes; it never answers a permission prompt.
+// Better Call GPT's hooks module: the call console.
 //
-// - classic.PermissionRequest: while this session is on a call, write permission.json into the
-//   call's own state directory, so the voice can say Claude is asking for a permission. The event
-//   is a permission REQUEST (another hook or the host may still decide it without a dialog).
-//   The hook always returns what next(e) returns, untouched, and a failure here is swallowed.
-// - session.start: every 2 s, read status.json to know whether this session is on a call.
-// - ui.render AbovePrompt: while this session is on a call, one dim line above the prompt,
-//   below whatever other mods draw there.
+// - ui.render AbovePrompt: one band. No call: [ Call ]. On a call: what the voice heard and has
+//   not handed over, how many spoken messages wait in Claude's queue, and [ Steer ] [ Hang up ].
+// - Call: starts the voice process as this session's child ($.process.spawn), on the operator's
+//   own press. No model turn runs and no permission prompt is involved: the press is the
+//   consent to open the microphone and the paid voice connection.
+// - Hang up: the voice process's own `stop` (goodbye, falling tone, device released).
+// - Steer: "take what I said now". The voice process is asked to hand over what it heard; and
+//   when a spoken message waits behind Claude's running turn, that turn is ended so the message
+//   is read next. Nothing is ever sent twice.
+// - /call, /hangup, /steer do the same as the buttons.
+// - classic.PermissionRequest: while on a call, write permission.json so the voice can say
+//   Claude is asking for a permission. Observed only: the hook returns what next(e) returns.
+//   Approvals stay on the keyboard.
 //
-// It reads only status.json (written by the voice process) and writes only permission.json,
-// both in <state root>/<session id>/, the directory the voice process created (0700).
+// It reads status.json (written by the voice process) and writes only permission.json, both in
+// <state root>/<session id>/, the directory the voice process created (0700).
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { CallLive } from '../types'
+import type { CallView } from '../types'
 
 const APP = 'bettercallgpt'
-const POLL_MS = 2000
+// The release this plugin starts when no `bettercallgpt` is installed on PATH.
+const RELEASE = 'git+https://github.com/insta-fusion/bettercallgpt@v0.2.0'
+const TICK_MS = 500
+// With no call, status.json is read every IDLE_TICKS ticks (a call started with
+// /bettercallgpt:on shows up within two seconds).
+const IDLE_TICKS = 4
+// A Hang up the voice process has not answered after this long ends the child directly.
+const HANGUP_BOUND_MS = 8000
 // Longer than this after flattening, no summary is written at all (the tool's name still is):
 // a cut command could split a credential the voice process would then fail to mask.
 const SUMMARY_MAX = 2000
@@ -27,10 +40,29 @@ const AHEAD_S = 5
 // The session ids the launcher accepts (bettercallgpt/cli.py SESSION_ID): a name, never a path.
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const FILE_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+// A spoken message as it arrives in the session: its text ends with the voice tag.
+const VOICE_TAG = /⟨v#[^⟩]*⟩\s*$/
 
-export const BAND = "On a call · Better Call GPT · voice can't approve, use your keyboard"
+export const KEYBOARD = "voice can't approve, use your keyboard"
+export const IDLE: CallView = { phase: 'idle', unsent: '', queued: 0, working: false, note: '' }
 
-const live = atom({ plugin: 'bettercallgpt', key: 'live' } as const, false as CallLive)
+const call = atom({ plugin: 'bettercallgpt', key: 'call' } as const, IDLE)
+
+type Child = AsyncGenerator<unknown, unknown, unknown>
+type Status = Record<string, unknown>
+type LiveCall = { dir: string; instance: string; status: Status }
+
+// This module's own memory. A reload starts it over, and a reload also ends the child.
+let child: Child | undefined
+let command: string[] | undefined
+let mainTurn = ''
+let steerWaits = false
+let ticks = 0
+let isPolling = false
+
+function set($: EngineInterface, patch: Partial<CallView>) {
+  return update($, call, view => ({ ...view, ...patch }))
+}
 
 /** Where the voice process keeps its state. The order mirrors bettercallgpt/cli.py
  * user_state_dir + apply_defaults, which main() applies before daemon.main in the same process. */
@@ -50,7 +82,7 @@ async function stateRoot($: EngineInterface): Promise<string | undefined> {
  * and a finite `at` (epoch seconds) between AHEAD_S ahead and STALE_AFTER_S behind now. */
 export function isLive(status: unknown, nowSeconds: number): boolean {
   if (typeof status !== 'object' || status === null) return false
-  const { phase, relay, ended, at } = status as Record<string, unknown>
+  const { phase, relay, ended, at } = status as Status
   const hasEnded =
     typeof ended === 'object' && ended !== null ? Object.keys(ended).length > 0 : Boolean(ended)
   const age = typeof at === 'number' && Number.isFinite(at) ? nowSeconds - at : NaN
@@ -58,10 +90,8 @@ export function isLive(status: unknown, nowSeconds: number): boolean {
   return phase === 'running' && relay === 'qualified' && !hasEnded && isFresh
 }
 
-type LiveCall = { dir: string; instance: string }
-
-/** This session's live call (its state directory and the voice process's instance id), or
- * undefined. Rejects when status.json cannot be read or parsed. */
+/** This session's live call (its state directory, the voice process's instance id and its
+ * status), or undefined. Rejects when status.json cannot be read or parsed. */
 async function liveCall($: EngineInterface, sessionId: string): Promise<LiveCall | undefined> {
   if (!SESSION_ID.test(sessionId)) return undefined
   const root = await stateRoot($)
@@ -71,8 +101,8 @@ async function liveCall($: EngineInterface, sessionId: string): Promise<LiveCall
   if (!(await $.fs.exists(statusPath))) return undefined
   const status: unknown = JSON.parse(await $.fs.read(statusPath))
   if (!isLive(status, (await $.clock.now()) / 1000)) return undefined
-  const { instance } = status as Record<string, unknown>
-  return { dir, instance: typeof instance === 'string' ? instance : '' }
+  const { instance } = status as Status
+  return { dir, instance: typeof instance === 'string' ? instance : '', status: status as Status }
 }
 
 /** One line naming what the request is about: the Bash command, the file, or the MCP tool;
@@ -88,16 +118,170 @@ export function summarize(tool: string, input: unknown): string {
   return line.length <= SUMMARY_MAX ? line : ''
 }
 
+/** What status.json says the band should show. */
+export function liveFields(status: Status): Pick<CallView, 'unsent' | 'queued'> {
+  const unsent = status.unsent
+  const preview =
+    typeof unsent === 'object' && unsent !== null ? (unsent as Status).preview : undefined
+  const queued = Array.isArray(status.queued) ? status.queued.length : 0
+  return { unsent: typeof preview === 'string' ? preview : '', queued }
+}
+
+/** The last line of what a failed start wrote, as one short note. */
+export function failure(stderr: string, code: unknown): string {
+  const lines = stderr.split('\n').map(line => line.trim()).filter(line => line !== '')
+  const last = (lines.pop() ?? '').replace(/^voice:\s*/, '')
+  if (last.includes('bind_no_transcript')) return 'send Claude one message first, then call again'
+  if (last === '') return `the voice process ended (exit ${String(code)})`
+  return last.length <= 160 ? last : `${last.slice(0, 159)}…`
+}
+
+/** How the voice process is run: an installed `bettercallgpt` when PATH has one (a checkout
+ * installed for development), otherwise the pinned release through uvx. */
+async function launcher($: EngineInterface): Promise<string[]> {
+  if (command !== undefined) return command
+  const found = await $.process
+    .run(['/bin/sh', '-c', 'command -v bettercallgpt'])
+    .then(result => (result.exitCode === 0 ? result.stdout.trim() : ''), () => '')
+  command = found.startsWith('/') ? [found] : ['uvx', '--from', RELEASE, 'bettercallgpt']
+  return command
+}
+
+/** Read the child's output until it ends; then the call is over, whatever ended it. */
+async function follow($: EngineInterface, stream: Child) {
+  let stderr = ''
+  let code: unknown
+  try {
+    for (;;) {
+      const piece = await stream.next()
+      if (piece.done) {
+        code = (piece.value as { code?: unknown } | undefined)?.code
+        break
+      }
+      const { stream: pipe, text } = piece.value as { stream: string; text: string }
+      if (pipe === 'stderr') stderr = (stderr + text).slice(-4000)
+    }
+  } catch (error) {
+    stderr = String(error)
+  }
+  if (child !== stream) return // a newer call owns the band
+  child = undefined
+  steerWaits = false
+  try {
+    const { phase } = await read($, call)
+    const note = phase === 'starting' ? failure(stderr, code) : ''
+    await set($, { ...IDLE, working: mainTurn !== '', note })
+  } catch {
+    // The module was unloaded while the child was ending: there is no band left to update.
+  }
+}
+
+async function startCall($: EngineInterface): Promise<string> {
+  const view = await read($, call)
+  if (view.phase !== 'idle' || child !== undefined) return 'a call is already on'
+  const sessionId = await $.session.id()
+  if (!SESSION_ID.test(sessionId)) return 'this session has no usable id'
+  const nonce = `mod-${(await $.clock.now()).toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  const argv = [...(await launcher($)), '--session', sessionId, '--nonce', nonce, '--mod', 'start']
+  const stream = $.process.spawn({ argv, env: { NONCE: nonce } }) as unknown as Child
+  child = stream
+  await set($, { ...IDLE, phase: 'starting', working: mainTurn !== '', note: '' })
+  void follow($, stream)
+  return 'calling'
+}
+
+async function hangUp($: EngineInterface): Promise<string> {
+  const view = await read($, call)
+  if (view.phase === 'idle') return 'no call to hang up'
+  const sessionId = await $.session.id()
+  await set($, { phase: 'ending', note: '' })
+  steerWaits = false
+  await $.process
+    .run([...(await launcher($)), '--session', sessionId, 'stop'])
+    .catch(() => undefined)
+  const ending = child
+  if (ending !== undefined) {
+    // The voice process says goodbye and exits by itself; one that does not is ended here.
+    $.clock.after(HANGUP_BOUND_MS, () => {
+      if (child === ending) void ending.return(undefined)
+    })
+  }
+  return 'hanging up'
+}
+
+/** End Claude's running turn when a Steer is waiting and a spoken message sits behind it. */
+async function bringForward($: EngineInterface, queued: number) {
+  if (!steerWaits || queued === 0) return
+  steerWaits = false
+  const turnId = mainTurn
+  if (turnId === '') return // idle: the message starts its own turn
+  try {
+    await $.turn.abort({ turnId })
+    await set($, { note: 'steered: Claude takes your message now' })
+  } catch {
+    // That turn ended by itself in the meantime: the message is read next anyway.
+  }
+}
+
+async function steer($: EngineInterface): Promise<string> {
+  const view = await read($, call)
+  if (view.phase !== 'live') return 'no call to steer'
+  if (view.unsent === '' && view.queued === 0) {
+    await set($, { note: 'nothing to steer' })
+    return 'nothing to steer'
+  }
+  steerWaits = mainTurn !== '' // with no turn running there is nothing to end
+  if (view.unsent !== '') {
+    const sessionId = await $.session.id()
+    await $.process
+      .run([...(await launcher($)), '--session', sessionId, 'steer'])
+      .catch(() => undefined)
+    await set($, { note: 'steer: handing over what you said' })
+  }
+  await bringForward($, view.queued)
+  return 'steering'
+}
+
+async function poll($: EngineInterface, isFirst = false) {
+  if (isPolling) return // one read at a time: a slow one never lands after a newer one
+  isPolling = true
+  try {
+    const view = await read($, call)
+    ticks += 1
+    if (!isFirst && view.phase === 'idle' && ticks % IDLE_TICKS !== 0) return
+    const sessionId = await $.session.id()
+    // A status that cannot be read or parsed is no call.
+    const live = await liveCall($, sessionId).catch(() => undefined)
+    // A /clear while reading moved to another session: this answer is for the old one.
+    if (sessionId !== (await $.session.id())) return
+    if (live === undefined) {
+      // No child and no live status: the call (one started by /bettercallgpt:on) is over.
+      if (child === undefined && view.phase !== 'idle') await set($, { ...IDLE, working: view.working })
+      return
+    }
+    const fields = liveFields(live.status)
+    const phase = view.phase === 'ending' ? 'ending' : 'live'
+    const isSame =
+      view.phase === phase && view.unsent === fields.unsent && view.queued === fields.queued
+    if (!isSame) await set($, { phase, ...fields })
+    await bringForward($, fields.queued)
+  } catch {
+    // The session itself could not be asked: try again on the next tick.
+  } finally {
+    isPolling = false
+  }
+}
+
 export const register: Register = on => {
   on('classic.PermissionRequest', async ($, e, next) => {
     try {
-      const call = await liveCall($, e.session_id)
-      if (call !== undefined) {
+      const live = await liveCall($, e.session_id)
+      if (live !== undefined) {
         const at = (await $.clock.now()) / 1000
         const summary = summarize(e.tool_name, e.tool_input)
         // `instance` ties the notice to this call: a later call in the same session ignores it.
-        const event = { at, tool: e.tool_name, summary, instance: call.instance }
-        await $.fs.write(`${call.dir}/permission.json`, JSON.stringify(event))
+        const event = { at, tool: e.tool_name, summary, instance: live.instance }
+        await $.fs.write(`${live.dir}/permission.json`, JSON.stringify(event))
       }
     } catch {
       // Observing failed. The prompt is the same either way.
@@ -106,43 +290,102 @@ export const register: Register = on => {
   })
 
   on('session.start', async ($, e, next) => {
-    let isPolling = false
-    const poll = async () => {
-      if (isPolling) return // one read at a time: a slow one never lands after a newer one
-      isPolling = true
-      try {
-        const sessionId = await $.session.id()
-        // A status that cannot be read or parsed is no call.
-        const isOnCall = await liveCall($, sessionId).then(
-          call => call !== undefined,
-          () => false,
-        )
-        // A /clear while reading moved to another session: this answer is for the old one.
-        if (sessionId !== (await $.session.id())) return
-        if (isOnCall !== (await read($, live))) await update($, live, () => isOnCall)
-      } catch {
-        // The session itself could not be asked: try again on the next tick.
-      } finally {
-        isPolling = false
-      }
+    try {
+      await $.command.register({ name: 'call', description: 'Start a voice call in this session' })
+      await $.command.register({ name: 'hangup', description: 'End the voice call', immediate: true })
+      await $.command.register({
+        name: 'steer',
+        description: 'Have Claude take what you just said now',
+        immediate: true,
+      })
+    } catch {
+      // A host that takes no commands still gets the band and its buttons.
     }
-    await poll()
-    $.clock.every(POLL_MS, () => void poll())
+    await poll($, true)
+    $.clock.every(TICK_MS, () => void poll($))
+    return next(e)
+  })
+
+  on('session.end', async ($, e, next) => {
+    // The call belongs to the session that started it: a /clear or an exit ends it.
+    if (child !== undefined) await hangUp($)
+    return next(e)
+  })
+
+  on('command.run', { command: 'call' }, async $ => ({ text: await startCall($) }))
+  on('command.run', { command: 'hangup' }, async $ => ({ text: await hangUp($) }))
+  on('command.run', { command: 'steer' }, async $ => ({ text: await steer($) }))
+
+  on('turn.start', async ($, e, next) => {
+    mainTurn = e.turnId
+    await set($, { working: true })
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    // A subagent's turn completes here too; only the main turn's own end clears it.
+    if (e.agentId === undefined && e.turnId === mainTurn) {
+      mainTurn = ''
+      steerWaits = false // a Steer is about the turn it was pressed in
+      await set($, { working: false })
+    }
+    return next(e)
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    // A spoken message was just read by Claude: a Steer that was waiting for that is done.
+    if (e.origin.kind === 'peer' && VOICE_TAG.test(e.text)) steerWaits = false
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const isDrawn = e.surface === 'terminal' || e.surface === 'desktop'
-    if (!isDrawn || e.props.hasSurvey || !(await read($, live))) return next(e)
+    if (!isDrawn || e.props.hasSurvey) return next(e)
+    const view = await read($, call)
     // The band is shared: keep what the mods after this one draw (mods_interface.md, "Pick
     // where to draw"), and add one line under it.
     const below = await next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    if (view.phase === 'idle') {
+      return (
+        <Box flexDirection="column">
+          {below}
+          <Box>
+            <Button key="call" label="Call" hotkey="c" onPress={() => void startCall($)} />
+            <Text dimColor wrap="truncate-end">
+              {view.note === '' ? ' Better Call GPT · talk to this session' : ` ${view.note}`}
+            </Text>
+          </Box>
+        </Box>
+      )
+    }
+    if (view.phase === 'starting') {
+      return (
+        <Box flexDirection="column">
+          {below}
+          <Box>
+            <Text>Calling… </Text>
+            <Button key="hangup" label="Hang up" hotkey="h" onPress={() => void hangUp($)} />
+          </Box>
+        </Box>
+      )
+    }
+    const parts = [view.phase === 'ending' ? 'Hanging up…' : '● On a call']
+    if (view.unsent !== '') parts.push(`heard, not sent: «${view.unsent}»`)
+    if (view.queued > 0) parts.push(`${view.queued} waiting for Claude`)
+    if (view.working) parts.push('Claude is working')
+    if (view.note !== '') parts.push(view.note)
     return (
       <Box flexDirection="column">
         {below}
+        <Box>
+          <Text wrap="truncate-end">{parts.join(' · ')} </Text>
+          <Button key="steer" label="Steer" hotkey="s" onPress={() => void steer($)} />
+          <Text> </Text>
+          <Button key="hangup" label="Hang up" hotkey="h" onPress={() => void hangUp($)} />
+        </Box>
         <Text dimColor wrap="truncate-end">
-          {BAND}
+          {KEYBOARD}
         </Text>
       </Box>
     )
