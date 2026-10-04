@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { KEYBOARD, failure, liveFields, steerNote, summarize } from '../hooks/register'
+import { failure, liveFields, steerNote, summarize } from '../hooks/register'
 
 const SID = '0b4e7c1a-9d2f-4e55-8a3b-1c2d3e4f5a6b'
 const OTHER_SID = '9f8e7d6c-5b4a-4321-8fed-cba987654321'
@@ -51,6 +51,17 @@ function world(on: On, { files, env = { HOME }, session = { id: SID }, gate, isW
     files.set(e.path, e.text)
     return { value: undefined }
   })
+  const toasts: string[] = []
+  const store = new Map<string, unknown>()
+  on('ui.toast', ($, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('store.get', ($, e) => ({ value: store.get(e.key) }))
+  on('store.set', ($, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
   on('session.id', () => ({ value: session.id }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
@@ -65,7 +76,7 @@ function world(on: On, { files, env = { HOME }, session = { id: SID }, gate, isW
   })
   mock.env(on, env)
   const clock = mock.clock(on, { now: NOW_MS })
-  return { writes, reads, below, clock }
+  return { writes, reads, below, clock, toasts, store }
 }
 
 const status = (value: object) => new Map([[`${DIR}/status.json`, JSON.stringify(value)]])
@@ -254,11 +265,11 @@ describe('the call console', () => {
     const nonce = env?.NONCE ?? ''
     expect(nonce).toMatch(/^mod-[a-z0-9]+-[a-z0-9]+$/)
     expect(argv).toEqual([BIN, '--session', SID, '--nonce', nonce, '--mod', 'start'])
-    expect(await ui.find({ type: 'Text', text: '✆ Calling… ' })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: ' ◌ CONNECTING ' }))?.props.backgroundColor).toBe('yellow')
 
     await clock.advance(500) // status.json is live now
     expect(await ui.find({ type: 'Button', key: 'steer' })).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: `${KEYBOARD} · /steer · /hangup` }))?.props.dimColor).toBe(true)
+    expect((await ui.find({ type: 'Button', key: 'hangup' }))?.props.label).toBe('📴 Hang up')
 
     await ui.press({ key: 'call' }).catch(() => undefined) // no Call button on a call
     expect(spawned).toHaveLength(1)
@@ -296,7 +307,9 @@ describe('the call console', () => {
     await ui.press({ key: 'call' })
     await clock.settle()
     expect(await ui.find({ type: 'Button', key: 'call' })).toBeDefined()
-    expect(await ui.find({ text: ' audio-device busy (another voice surface is active)' })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: ' ✕ CALL FAILED ' }))?.props.backgroundColor).toBe('red')
+    expect(await ui.find({ text: 'audio-device busy (another voice surface is active)' })).toBeDefined()
+    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('📞 Call again')
   })
 
   test('a call started by /bettercallgpt:on shows the same console and goes when its heartbeat stops', async ($: Engine, on: On) => {
@@ -317,9 +330,9 @@ describe('the call console', () => {
     await start($)
     const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
     await clock.advance(500)
-    expect((await ui.find({ type: 'Text', text: '● LIVE ' }))?.props.color).toBe('green')
-    expect((await ui.find({ type: 'Text', text: '✎ heard, not sent: «先跑一下测试» ' }))?.props.color).toBe('yellow')
-    expect((await ui.find({ type: 'Text', text: '⇪ 2 waiting for Claude ' }))?.props.color).toBe('cyan')
+    expect((await ui.find({ type: 'Text', text: ' 🎙 LIVE ' }))?.props.backgroundColor).toBe('green')
+    expect((await ui.find({ type: 'Text', text: '«先跑一下测试» not sent' }))?.props.color).toBe('yellow')
+    expect((await ui.find({ type: 'Text', text: '2 queued' }))?.props.color).toBe('cyan')
     expect((await ui.find({ type: 'Button', key: 'steer' }))?.props.variant).toBe('primary')
   })
 
@@ -401,15 +414,15 @@ describe('reading the voice process', () => {
   })
 
   test('steerNote says what the voice process did with a Steer', () => {
-    expect(steerNote('sent')).toBe('steered: sent what you said')
+    expect(steerNote('sent')).toBe('')
     expect(steerNote('nothing_unsent')).toBe('')
     expect(steerNote('refused:owner_lost')).toBe('steer did not send (refused:owner_lost)')
     expect(steerNote(undefined)).toBe('')
   })
 
-  test('a Steer answer shows once in the band', async ($: Engine, on: On) => {
+  test('a Steer answer is said once, in passing', async ($: Engine, on: On) => {
     const files = status({ ...LIVE, steer: { id: 'a1', result: 'sent' } })
-    const { clock } = world(on, { files })
+    const { clock, toasts } = world(on, { files })
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount({
       plugin: 'bettercallgpt',
@@ -418,6 +431,25 @@ describe('reading the voice process', () => {
       props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
     })
     await clock.advance(500)
-    expect(await ui.find({ type: 'Text', text: 'steered: sent what you said ' })).toBeDefined()
+    await clock.advance(2000)
+    expect(toasts).toEqual(['Steer: sent what you said'])
+    expect(await ui.find({ type: 'Text', text: 'listening' })).toBeDefined()
+  })
+
+  test('/call-icons chooses the symbols and keeps the choice', async ($: Engine, on: On) => {
+    const { store } = world(on, { files: new Map() })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount({
+      plugin: 'bettercallgpt',
+      component: 'AbovePrompt',
+      surface: 'terminal',
+      props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    })
+    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('📞 Call')
+    await $.command.run({ command: 'call-icons', args: 'none' })
+    expect((await ui.find({ type: 'Button', key: 'call' }))?.props.label).toBe('Call')
+    expect(store.get('icons')).toBe('none')
+    await $.command.run({ command: 'call-icons', args: 'sparkles' })
+    expect(store.get('icons')).toBe('none')
   })
 })

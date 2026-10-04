@@ -302,7 +302,8 @@ class PluginTests(unittest.TestCase):
         calls = set(re.findall(r"\$\.([a-z]+\.[a-zA-Z]+)\(", source))
         self.assertLessEqual(calls, {"env.get", "fs.exists", "fs.read", "fs.write", "clock.now",
                                      "clock.every", "clock.after", "session.id", "ui.resolve",
-                                     "command.register", "process.spawn", "turn.abort"})
+                                     "command.register", "process.spawn", "turn.abort",
+                                     "ui.toast", "store.get", "store.set"})
         # $.process.run is written across lines (`$.process\n.run([`): count it by its argv.
         self.assertEqual(source.count("$.process.spawn("), 1)
         self.assertEqual(source.count(".run(["), 3)

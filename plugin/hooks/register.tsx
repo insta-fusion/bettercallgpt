@@ -43,15 +43,28 @@ const FILE_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit'
 // A spoken message as it arrives in the session: its text ends with the voice tag.
 const VOICE_TAG = /⟨v#[^⟩]*⟩\s*$/
 
-// The band's colors: the brand's yellow, and plain terminal colors for the states.
+// The band's colors: the brand's yellow as a pill's background (dark text on it reads on light
+// and dark themes alike), and plain terminal colors for the states.
 const BRAND = '#F5C518'
 const LIVE = 'green'
 const WARN = 'yellow'
 const QUEUE = 'cyan'
-const WORK = 'magenta'
 const END = 'red'
+const INK = 'black'
+// Below this many columns the words heard and not sent get a row of their own.
+const NARROW = 80
 
-export const KEYBOARD = "voice can't approve, use your keyboard"
+// The symbols on the controls. `emoji` draws everywhere; `nerd` needs a Nerd Font in the
+// terminal (a handset, a steering wheel, a hung-up handset); `none` is words only.
+// Chosen with /call-icons and kept in this plugin's store.
+export const ICON_SETS = {
+  emoji: { call: '📞 ', steer: '🛞 ', hangup: '📴 ', live: '🎙 ' },
+  nerd: { call: '\uf095 ', steer: '\u{f04d4} ', hangup: '\u{f03fa} ', live: '\u{f036c} ' },
+  none: { call: '', steer: '', hangup: '', live: '● ' },
+} as const
+export type IconSet = keyof typeof ICON_SETS
+const ICONS_KEY = 'icons'
+
 export const IDLE: CallView = { phase: 'idle', unsent: '', queued: 0, working: false, note: '' }
 
 const call = atom({ plugin: 'bettercallgpt', key: 'call' } as const, IDLE)
@@ -67,6 +80,7 @@ let mainTurn = ''
 let steerWaits = false
 let isStarting = false
 let steerShown = ''
+let icons: IconSet = 'emoji'
 let ticks = 0
 let isPolling = false
 
@@ -244,16 +258,25 @@ async function bringForward($: EngineInterface) {
   steerWaits = false
   try {
     await $.turn.abort({ turnId })
-    await set($, { note: 'steered: Claude takes your message now' })
+    $.ui.toast('Steer: Claude takes your message now')
   } catch {
     // That turn ended by itself in the meantime: the message is read next anyway.
   }
 }
 
+async function chooseIcons($: EngineInterface, wanted: string): Promise<string> {
+  const name = wanted.trim()
+  if (!(name in ICON_SETS)) return `icons: ${icons} (choose emoji, nerd or none)`
+  icons = name as IconSet
+  await $.store.set(ICONS_KEY, icons)
+  await update($, call, view => ({ ...view })) // draw the band again
+  return `icons: ${icons}`
+}
+
 /** What the voice process answered to the last Steer, as the band's note. */
 export function steerNote(result: unknown): string {
   if (typeof result !== 'string' || result === '') return ''
-  if (result === 'sent') return 'steered: sent what you said'
+  if (result === 'sent') return ''
   if (result === 'nothing_unsent') return ''
   return `steer did not send (${result.slice(0, 60)})`
 }
@@ -264,7 +287,6 @@ async function steer($: EngineInterface): Promise<string> {
   const sessionId = await $.session.id()
   // A Steer waits only for the turn it was pressed in (turn.complete clears it).
   steerWaits = mainTurn !== ''
-  await set($, { note: 'steer…' })
   // The voice process sends what it heard and has not handed over, itself, as a message that
   // ends Claude's running turn. Its answer comes back in status.json (`steer`).
   await $.process
@@ -295,8 +317,14 @@ async function poll($: EngineInterface, isFirst = false) {
     // The voice process's answer to a Steer, shown once per press.
     const answer = (live.status.steer ?? {}) as Status
     const answerId = typeof answer.id === 'string' ? answer.id : ''
-    const note = answerId !== '' && answerId !== steerShown ? steerNote(answer.result) : undefined
-    if (answerId !== '') steerShown = answerId
+    let note: string | undefined
+    if (answerId !== '' && answerId !== steerShown) {
+      // What happened is said once, in passing; only a failure stays in the band.
+      note = steerNote(answer.result)
+      if (answer.result === 'sent') $.ui.toast('Steer: sent what you said')
+      if (answer.result === 'nothing_unsent' && fields.queued === 0) $.ui.toast('Nothing to steer')
+      steerShown = answerId
+    }
     const isSame =
       view.phase === 'live' && view.unsent === fields.unsent && view.queued === fields.queued
     if (!isSame || note !== undefined) {
@@ -335,8 +363,20 @@ export const register: Register = on => {
   })
 
   on('session.start', async ($, e, next) => {
+    const kept = await $.store.get(ICONS_KEY).catch(() => undefined)
+    if (typeof kept === 'string' && kept in ICON_SETS) icons = kept as IconSet
     try {
-      await $.command.register({ name: 'call', description: 'Start a voice call in this session' })
+      await $.command.register({
+        name: 'call-icons',
+        description: 'Symbols on the call controls: emoji, nerd (Nerd Font) or none',
+        argumentHint: '[emoji|nerd|none]',
+        immediate: true,
+      })
+      await $.command.register({
+        name: 'call',
+        description: 'Start a voice call in this session',
+        immediate: true,
+      })
       await $.command.register({ name: 'hangup', description: 'End the voice call', immediate: true })
       await $.command.register({
         name: 'steer',
@@ -358,6 +398,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'call' }, async $ => ({ text: await startCall($) }))
+  on('command.run', { command: 'call-icons' }, async ($, e) => ({ text: await chooseIcons($, e.args) }))
   on('command.run', { command: 'hangup' }, async $ => ({ text: await hangUp($) }))
   on('command.run', { command: 'steer' }, async $ => ({ text: await steer($) }))
 
@@ -391,81 +432,98 @@ export const register: Register = on => {
     // where to draw"), and add one line under it.
     const below = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
+    const icon = ICON_SETS[icons]
+    const isNarrow = e.props.bodyColumns < NARROW
     if (view.phase === 'idle') {
+      const hasFailed = view.note !== ''
       return (
         <Box flexDirection="column">
           {below}
-          <Box>
-            <Text color={BRAND} bold>
-              Better Call GPT{' '}
-            </Text>
-            <Text color={LIVE} bold>
-              ✆{' '}
-            </Text>
-            <Button key="call" label="Call" hotkey="c" variant="primary" onPress={() => void startCall($)} />
-            <Text color={view.note === '' ? undefined : WARN} dimColor={view.note === ''} wrap="truncate-end">
-              {view.note === '' ? ' talk to this session · /call' : ` ${view.note}`}
+          <Box gap={1}>
+            {hasFailed ? (
+              <Text backgroundColor={END} color={INK} bold>
+                {' ✕ CALL FAILED '}
+              </Text>
+            ) : (
+              <Text backgroundColor={BRAND} color={INK} bold>
+                {' BETTER CALL GPT '}
+              </Text>
+            )}
+            <Button
+              key="call"
+              label={`${icon.call}${hasFailed ? 'Call again' : 'Call'}`}
+              hotkey="c"
+              variant="primary"
+              onPress={() => void startCall($)}
+            />
+            <Text dimColor={!hasFailed} wrap="truncate-end">
+              {hasFailed ? view.note : isNarrow ? 'talk by voice' : 'talk to this session by voice · /call'}
             </Text>
           </Box>
         </Box>
       )
     }
-    if (view.phase === 'starting') {
+    if (view.phase === 'starting' || view.phase === 'ending') {
       return (
         <Box flexDirection="column">
           {below}
-          <Box>
-            <Text color={BRAND} bold>
-              ✆ Calling…{' '}
+          <Box gap={1}>
+            <Text backgroundColor={WARN} color={INK} bold>
+              {view.phase === 'starting' ? ' ◌ CONNECTING ' : ' ◌ HANGING UP '}
             </Text>
-            <Text color={END} bold>
-              ✆{' '}
+            <Text dimColor wrap="truncate-end">
+              {view.phase === 'starting' ? 'opening the microphone and the voice…' : 'saying goodbye…'}
             </Text>
-            <Button key="hangup" label="Hang up" hotkey="h" onPress={() => void hangUp($)} />
+            {view.phase === 'starting' ? (
+              <Button key="hangup" label={`${icon.hangup}Hang up`} hotkey="h" onPress={() => void hangUp($)} />
+            ) : null}
           </Box>
         </Box>
       )
     }
-    const isEnding = view.phase === 'ending'
-    const isQuiet = view.unsent === '' && view.queued === 0 && !view.working
+    const canSteer = view.unsent !== '' || view.queued > 0
+    const quote =
+      view.unsent === '' ? null : (
+        <Text color={WARN} italic wrap="truncate-start">
+          «{view.unsent}» not sent
+        </Text>
+      )
     return (
       <Box flexDirection="column">
         {below}
-        <Box>
-          <Text color={isEnding ? WARN : LIVE} bold>
-            {isEnding ? '◌ Hanging up…' : '● LIVE'}{' '}
+        <Box gap={1}>
+          <Text backgroundColor={LIVE} color={INK} bold>
+            {` ${icon.live}LIVE `}
           </Text>
-          {isQuiet && !isEnding ? <Text dimColor>listening </Text> : null}
-          {view.unsent === '' ? null : (
-            <Text color={WARN} wrap="truncate-end">
-              ✎ heard, not sent: «{view.unsent}»{' '}
-            </Text>
-          )}
-          {view.queued === 0 ? null : (
-            <Text color={QUEUE} bold>
-              ⇪ {view.queued} waiting for Claude{' '}
-            </Text>
-          )}
-          {view.working ? <Text color={WORK}>⚙ Claude working </Text> : null}
-          {view.note === '' ? null : <Text dimColor>{view.note} </Text>}
-          <Text color={QUEUE} bold>
-            ⎈{' '}
-          </Text>
-          <Button
-            key="steer"
-            label="Steer"
-            hotkey="s"
-            variant={view.unsent !== '' || view.queued > 0 ? 'primary' : 'secondary'}
-            onPress={() => void steer($)}
-          />
-          <Text color={END} bold>
-            {' '}✆{' '}
-          </Text>
-          <Button key="hangup" label="Hang up" hotkey="h" variant="secondary" onPress={() => void hangUp($)} />
+          <Box flexGrow={1} flexShrink={1} gap={1} overflow="hidden">
+            {canSteer ? null : <Text dimColor>{view.note === '' ? 'listening' : view.note}</Text>}
+            {isNarrow ? null : quote}
+            {view.queued === 0 ? null : (
+              <Text color={QUEUE} bold>
+                {view.queued} queued
+              </Text>
+            )}
+            {canSteer && view.note !== '' ? <Text dimColor>{view.note}</Text> : null}
+          </Box>
+          <Box flexShrink={0} gap={1}>
+            <Button
+              key="steer"
+              label={`${icon.steer}Steer`}
+              hotkey="s"
+              variant={canSteer ? 'primary' : 'secondary'}
+              dimColor={!canSteer}
+              onPress={() => void steer($)}
+            />
+            <Button
+              key="hangup"
+              label={`${icon.hangup}Hang up`}
+              hotkey="h"
+              variant="secondary"
+              onPress={() => void hangUp($)}
+            />
+          </Box>
         </Box>
-        <Text dimColor wrap="truncate-end">
-          {KEYBOARD} · /steer · /hangup
-        </Text>
+        {isNarrow ? quote : null}
       </Box>
     )
   })
