@@ -285,10 +285,8 @@ CONTROL_COMMANDS = ("stop",)
 # Written atomically by `steer` (the CLI): {"id": <unique>, "at": <epoch seconds>}. Its own
 # file, so a `stop` and a `steer` written close together never overwrite each other.
 STEER_NAME = "steer.json"
-# Said to the voice model when the operator pressed Steer while words it heard were not handed
-# over yet. It asks for the hand-off; the model's own delegation then carries the words.
-STEER_NUDGE = ("操作者按了“立即发送”：把刚才听到、还没有交给 backend 的话,现在原样交给 backend。"
-               "不要复述,不要追问。")
+# Quiet context for the voice model after a Steer sent words directly.
+STEER_SENT_NOTE = "操作者按了“立即发送”：刚才听到、还没交出的话已经直接交给 backend,不要再转交这些话。"
 UNSENT_PREVIEW_MAX = 60
 # Written by the plugin's hooks module (plugin/hooks/register.tsx) when Claude makes a permission
 # request in this session while its call is live:
@@ -390,7 +388,11 @@ class ControlWatcher:
             data = json.loads((self.directory / STEER_NAME).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
-        return data.get("id") if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+        if self._instance is not None and data.get("instance") not in (None, self._instance):
+            return None                  # pressed for another call
+        return data.get("id")
 
     def read_steer(self) -> str | None:
         """The id of a Steer press not handled yet, once; None when nothing is new. The id is
@@ -797,8 +799,6 @@ class VoiceDaemon:
     def _publish_unsent(self, session: Any) -> None:
         words = getattr(session, "unclaimed_words", None)
         text = words() if callable(words) else ""
-        if not text:
-            self._nudged = False           # the hand-off happened (or nothing is waiting)
         preview = voice_config.redact_text(text)[-UNSENT_PREVIEW_MAX:]
         unsent = {"chars": len(text), "preview": preview}
         if unsent != self.status.data.get("unsent"):
@@ -829,25 +829,26 @@ class VoiceDaemon:
             print(f"voice: status write failed: {exc.strerror or exc}", file=sys.stderr)
 
     async def on_steer(self, steer_id: str) -> None:
-        """The operator pressed Steer. Words heard and not handed over: ask the voice model to
-        hand them over now, once per batch (a second press while that is pending adds nothing).
-        Whatever is already in the session's queue is the plugin's to bring forward: it ends
-        the running turn. Nothing is ever sent twice from here."""
+        """The operator pressed Steer: the words heard and not handed over are sent now, by
+        this process, as the operator's own request. No model decides it (asking the voice
+        model to hand over was tried live, 2026-10-04: it answered instead). The words are
+        claimed first, so a later delegation cannot send them a second time. Whatever already
+        waits in the session's queue is the plugin's to bring forward."""
         if getattr(self, "_shut", False):
             return
-        words = getattr(self.session, "unclaimed_words", None)
-        text = words() if callable(words) else ""
+        claim = getattr(self.session, "claim_unsent", None)
+        text = claim() if callable(claim) else ""
         if not text:
             result = "nothing_unsent"
-        elif getattr(self, "_nudged", False):
-            result = "already_asked"
         else:
-            self._nudged = True
+            self._publish_unsent(self.session)
             try:
-                await self.voice.announce(STEER_NUDGE, "narration")
-                result = "asked"
+                receipt = await self.loop.operator_request(text)
+                result = "sent" if receipt.outcome != "refused" else f"refused:{receipt.reason}"
+                if receipt.outcome != "refused":
+                    # Quiet context, so the voice model knows and does not hand it over again.
+                    await self.voice.context(STEER_SENT_NOTE)
             except Exception as exc:
-                self._nudged = False
                 result = f"failed:{type(exc).__name__}"
         self._set_live(steer={"id": steer_id, "result": result})
 
@@ -1786,8 +1787,12 @@ def cmd_steer(args: argparse.Namespace) -> int:
     file; the daemon's directory watch wakes on it (ControlWatcher.read_steer)."""
     directory = voice_platform.private_dir(state_dir(_session_id(args)))
     steer_id = uuid.uuid4().hex[:12]
+    # Named for the call that is running now: a press that lands after that call ended (and
+    # another began) is not the new call's.
+    current = Status.read(directory / STATUS_NAME) or {}
     # b3: lifecycle-ports begin  (a STAMP, not a wait: the id is the de-duplicator)
-    atomic_write(directory / STEER_NAME, {"id": steer_id, "at": time.time()})
+    atomic_write(directory / STEER_NAME, {"id": steer_id, "at": time.time(),
+                                             "instance": current.get("instance")})
     # b3: lifecycle-ports end
     print(json.dumps({"ok": True, "command": "steer", "id": steer_id}))
     return 0

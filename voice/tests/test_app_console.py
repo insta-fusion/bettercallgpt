@@ -114,13 +114,11 @@ class SteerCommand(unittest.IsolatedAsyncioTestCase):
 
 
 class _Voice:
-    def __init__(self, fail=False):
-        self.said, self.fail = [], fail
+    def __init__(self):
+        self.context_said = []
 
-    async def announce(self, text, origin):
-        if self.fail:
-            raise RuntimeError("socket gone")
-        self.said.append((text, origin))
+    async def context(self, text):
+        self.context_said.append(text)
 
 
 class _Session:
@@ -129,6 +127,26 @@ class _Session:
 
     def unclaimed_words(self):
         return self.words
+
+    def claim_unsent(self):
+        words, self.words = self.words, ""
+        return words
+
+
+class _Receipt:
+    def __init__(self, outcome="posted", reason=""):
+        self.outcome, self.reason = outcome, reason
+
+
+class _Loop:
+    def __init__(self, receipt=None, fail=False):
+        self.sent, self.receipt, self.fail = [], receipt or _Receipt(), fail
+
+    async def operator_request(self, text):
+        if self.fail:
+            raise RuntimeError("relay gone")
+        self.sent.append(text)
+        return self.receipt
 
 
 class LiveView(unittest.IsolatedAsyncioTestCase):
@@ -142,6 +160,7 @@ class LiveView(unittest.IsolatedAsyncioTestCase):
                                              backend_name="process", state=self.dir)
         self.daemon.voice = _Voice()
         self.daemon.session = _Session()
+        self.daemon.loop = _Loop()
 
     def _status(self):
         return json.loads(self.daemon.status.path.read_text(encoding="utf-8"))
@@ -179,35 +198,92 @@ class LiveView(unittest.IsolatedAsyncioTestCase):
         self.daemon._on_record({"kind": "heard", "tag": "req-9", "disposition": "queued"})
         self.assertEqual(self._status()["queued"], [])
 
-    async def test_steer_asks_once_per_batch_of_unsent_words(self):
+    async def test_steer_sends_the_unsent_words_itself_once(self):
         self.daemon.session = _Session("改成先跑测试")
-        await self.daemon.on_steer("s1")
-        self.assertEqual(self._status()["steer"], {"id": "s1", "result": "asked"})
-        self.assertEqual(self.daemon.voice.said,
-                         [(daemon_mod.STEER_NUDGE, "narration")])
-        await self.daemon.on_steer("s2")
-        self.assertEqual(self._status()["steer"], {"id": "s2", "result": "already_asked"})
-        self.assertEqual(len(self.daemon.voice.said), 1, "a second press adds nothing")
-        # The hand-off happened: the next batch may be asked for again.
-        self.daemon.session.words = ""
         self.daemon._publish_unsent(self.daemon.session)
-        self.daemon.session.words = "再加一句"
-        await self.daemon.on_steer("s3")
-        self.assertEqual(self._status()["steer"]["result"], "asked")
+        await self.daemon.on_steer("s1")
+        self.assertEqual(self.daemon.loop.sent, ["改成先跑测试"])
+        status = self._status()
+        self.assertEqual(status["steer"], {"id": "s1", "result": "sent"})
+        self.assertEqual(status["unsent"], {"chars": 0, "preview": ""})
+        self.assertEqual(self.daemon.voice.context_said, [daemon_mod.STEER_SENT_NOTE])
+        # A second press finds nothing left: nothing is sent twice.
+        await self.daemon.on_steer("s2")
+        self.assertEqual(self.daemon.loop.sent, ["改成先跑测试"])
+        self.assertEqual(self._status()["steer"], {"id": "s2", "result": "nothing_unsent"})
 
-    async def test_steer_with_nothing_unsent_says_so_and_speaks_nothing(self):
+    async def test_steer_with_nothing_unsent_says_so_and_sends_nothing(self):
         await self.daemon.on_steer("s1")
         self.assertEqual(self._status()["steer"], {"id": "s1", "result": "nothing_unsent"})
-        self.assertEqual(self.daemon.voice.said, [])
+        self.assertEqual(self.daemon.loop.sent, [])
 
-    async def test_a_steer_that_cannot_be_said_reports_it_and_can_be_retried(self):
+    async def test_a_refused_or_failed_send_is_reported(self):
         self.daemon.session = _Session("停一下")
-        self.daemon.voice = _Voice(fail=True)
+        self.daemon.loop = _Loop(_Receipt("refused", "owner_lost"))
         await self.daemon.on_steer("s1")
-        self.assertEqual(self._status()["steer"]["result"], "failed:RuntimeError")
-        self.daemon.voice = _Voice()
+        self.assertEqual(self._status()["steer"]["result"], "refused:owner_lost")
+        self.assertEqual(self.daemon.voice.context_said, [])
+        self.daemon.session = _Session("再说一次")
+        self.daemon.loop = _Loop(fail=True)
         await self.daemon.on_steer("s2")
-        self.assertEqual(self._status()["steer"]["result"], "asked")
+        self.assertEqual(self._status()["steer"]["result"], "failed:RuntimeError")
+
+
+class SteerClaim(unittest.IsolatedAsyncioTestCase):
+    """The words a Steer took are never handed over again by a later delegation."""
+
+    def _session(self):
+        from voice.live.gpt_live import GptLiveSession, _Fragment
+        session = GptLiveSession.__new__(GptLiveSession)
+        session._pending = [_Fragment(start_ms=100, text="先跑"), _Fragment(start_ms=900, text="测试")]
+        session._cursor = None
+        session.steer_claimed = False
+        return session
+
+    def test_claim_takes_the_words_and_moves_the_cursor(self):
+        session = self._session()
+        self.assertEqual(session.claim_unsent(), "先跑测试")
+        self.assertEqual((session._pending, session._cursor, session.steer_claimed),
+                         ([], 900, True))
+        self.assertEqual(session.claim_unsent(), "")
+
+    async def test_the_loop_sends_it_as_one_interrupting_request(self):
+        from voice.agent.loop import AgentLoop
+
+        class Backend:
+            def __init__(self):
+                self.sends = []
+
+            async def send(self, text, *, tag, priority, transcript, interpretation):
+                self.sends.append((text, tag, priority, transcript, interpretation))
+                return _Receipt("posted")
+
+        class Wal:
+            def __init__(self):
+                self.rows = []
+
+            async def append(self, record):
+                self.rows.append(record)
+
+            def record_op(self, *args):
+                self.rows.append(("op",) + args)
+
+            def set_outcome(self, *args):
+                self.rows.append(("outcome",) + args)
+
+        loop = AgentLoop.__new__(AgentLoop)
+        import itertools
+        from voice.conversation.log import ConversationLog
+        loop._ids = itertools.count(1)
+        loop.log = ConversationLog()
+        loop.ledger, loop.backend = Wal(), Backend()
+        loop.changed = asyncio.Event()
+        loop.stats = type("S", (), {"refused": 0, "dispatched": 0, "refusals": []})()
+        receipt = await loop.operator_request("先跑测试")
+        self.assertEqual(receipt.outcome, "posted")
+        self.assertEqual(loop.backend.sends, [("先跑测试", "req-1", "now", "先跑测试", "先跑测试")])
+        kinds = [row["kind"] if isinstance(row, dict) else row[0] for row in loop.ledger.rows]
+        self.assertEqual(kinds, ["heard", "op", "outcome"], "written ahead of the send")
 
 
 class LedgerStamps(unittest.TestCase):

@@ -64,6 +64,8 @@ let child: Child | undefined
 let command: string[] | undefined
 let mainTurn = ''
 let steerWaits = false
+let isStarting = false
+let steerShown = ''
 let ticks = 0
 let isPolling = false
 
@@ -184,17 +186,24 @@ async function follow($: EngineInterface, stream: Child) {
 }
 
 async function startCall($: EngineInterface): Promise<string> {
-  const view = await read($, call)
-  if (view.phase !== 'idle' || child !== undefined) return 'a call is already on'
-  const sessionId = await $.session.id()
-  if (!SESSION_ID.test(sessionId)) return 'this session has no usable id'
-  const nonce = `mod-${(await $.clock.now()).toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  const argv = [...(await launcher($)), '--session', sessionId, '--nonce', nonce, '--mod', 'start']
-  const stream = $.process.spawn({ argv, env: { NONCE: nonce } }) as unknown as Child
-  child = stream
-  await set($, { ...IDLE, phase: 'starting', working: mainTurn !== '', note: '' })
-  void follow($, stream)
-  return 'calling'
+  // Two presses in a row: the flag is taken before anything is awaited, so one call starts.
+  if (isStarting || child !== undefined) return 'a call is already on'
+  isStarting = true
+  try {
+    const view = await read($, call)
+    if (view.phase !== 'idle') return 'a call is already on'
+    const sessionId = await $.session.id()
+    if (!SESSION_ID.test(sessionId)) return 'this session has no usable id'
+    const nonce = `mod-${(await $.clock.now()).toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+    const argv = [...(await launcher($)), '--session', sessionId, '--nonce', nonce, '--mod', 'start']
+    const stream = $.process.spawn({ argv, env: { NONCE: nonce } }) as unknown as Child
+    child = stream
+    await set($, { ...IDLE, phase: 'starting', working: mainTurn !== '', note: '' })
+    void follow($, stream)
+    return 'calling'
+  } finally {
+    isStarting = false
+  }
 }
 
 async function hangUp($: EngineInterface): Promise<string> {
@@ -203,25 +212,35 @@ async function hangUp($: EngineInterface): Promise<string> {
   const sessionId = await $.session.id()
   await set($, { phase: 'ending', note: '' })
   steerWaits = false
-  await $.process
-    .run([...(await launcher($)), '--session', sessionId, 'stop'])
-    .catch(() => undefined)
   const ending = child
   if (ending !== undefined) {
     // The voice process says goodbye and exits by itself; one that does not is ended here.
+    // Armed before the stop is sent: a stop that hangs must not leave the call running.
     $.clock.after(HANGUP_BOUND_MS, () => {
       if (child === ending) void ending.return(undefined)
     })
   }
+  await $.process
+    .run([...(await launcher($)), '--session', sessionId, 'stop'])
+    .catch(() => undefined)
   return 'hanging up'
 }
 
-/** End Claude's running turn when a Steer is waiting and a spoken message sits behind it. */
-async function bringForward($: EngineInterface, queued: number) {
-  if (!steerWaits || queued === 0) return
-  steerWaits = false
+/** End Claude's running turn when a Steer is waiting and a spoken message sits behind it.
+ * The status is read again right here: a message Claude took in the meantime (it is no longer
+ * queued) must not cost the turn that is now working on it. */
+async function bringForward($: EngineInterface) {
+  if (!steerWaits) return
   const turnId = mainTurn
-  if (turnId === '') return // idle: the message starts its own turn
+  if (turnId === '') {
+    steerWaits = false // idle: a message starts its own turn
+    return
+  }
+  const sessionId = await $.session.id()
+  const live = await liveCall($, sessionId).catch(() => undefined)
+  if (live === undefined || liveFields(live.status).queued === 0) return
+  if (!steerWaits || turnId !== mainTurn) return // answered while reading
+  steerWaits = false
   try {
     await $.turn.abort({ turnId })
     await set($, { note: 'steered: Claude takes your message now' })
@@ -230,22 +249,27 @@ async function bringForward($: EngineInterface, queued: number) {
   }
 }
 
+/** What the voice process answered to the last Steer, as the band's note. */
+export function steerNote(result: unknown): string {
+  if (typeof result !== 'string' || result === '') return ''
+  if (result === 'sent') return 'steered: sent what you said'
+  if (result === 'nothing_unsent') return ''
+  return `steer did not send (${result.slice(0, 60)})`
+}
+
 async function steer($: EngineInterface): Promise<string> {
   const view = await read($, call)
   if (view.phase !== 'live') return 'no call to steer'
-  if (view.unsent === '' && view.queued === 0) {
-    await set($, { note: 'nothing to steer' })
-    return 'nothing to steer'
-  }
-  steerWaits = mainTurn !== '' // with no turn running there is nothing to end
-  if (view.unsent !== '') {
-    const sessionId = await $.session.id()
-    await $.process
-      .run([...(await launcher($)), '--session', sessionId, 'steer'])
-      .catch(() => undefined)
-    await set($, { note: 'steer: handing over what you said' })
-  }
-  await bringForward($, view.queued)
+  const sessionId = await $.session.id()
+  // A Steer waits only for the turn it was pressed in (turn.complete clears it).
+  steerWaits = mainTurn !== ''
+  await set($, { note: 'steer…' })
+  // The voice process sends what it heard and has not handed over, itself, as a message that
+  // ends Claude's running turn. Its answer comes back in status.json (`steer`).
+  await $.process
+    .run([...(await launcher($)), '--session', sessionId, 'steer'])
+    .catch(() => undefined)
+  await bringForward($)
   return 'steering'
 }
 
@@ -267,11 +291,24 @@ async function poll($: EngineInterface, isFirst = false) {
       return
     }
     const fields = liveFields(live.status)
-    const phase = view.phase === 'ending' ? 'ending' : 'live'
+    // The voice process's answer to a Steer, shown once per press.
+    const answer = (live.status.steer ?? {}) as Status
+    const answerId = typeof answer.id === 'string' ? answer.id : ''
+    const note = answerId !== '' && answerId !== steerShown ? steerNote(answer.result) : undefined
+    if (answerId !== '') steerShown = answerId
     const isSame =
-      view.phase === phase && view.unsent === fields.unsent && view.queued === fields.queued
-    if (!isSame) await set($, { phase, ...fields })
-    await bringForward($, fields.queued)
+      view.phase === 'live' && view.unsent === fields.unsent && view.queued === fields.queued
+    if (!isSame || note !== undefined) {
+      // The phase is decided on the view as it is when written: a Hang up pressed while this
+      // read was out stays "ending".
+      await update($, call, now => ({
+        ...now,
+        ...fields,
+        phase: now.phase === 'ending' ? 'ending' : 'live',
+        note: note ?? now.note,
+      }))
+    }
+    await bringForward($)
   } catch {
     // The session itself could not be asked: try again on the next tick.
   } finally {
@@ -315,7 +352,7 @@ export const register: Register = on => {
 
   on('session.end', async ($, e, next) => {
     // The call belongs to the session that started it: a /clear or an exit ends it.
-    if (child !== undefined) await hangUp($)
+    await hangUp($) // also a call /bettercallgpt:on started; with no call it does nothing
     return next(e)
   })
 

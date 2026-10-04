@@ -152,6 +152,8 @@ class GptLiveSession:
     The bounds are REQUIRED keyword parameters — no default literal lives here.
     """
 
+    steer_claimed = False      # see claim_unsent
+
     capabilities = CAPABILITIES
 
     def __init__(self, *, model: str, api_key: str, endpoint: str,
@@ -179,6 +181,9 @@ class GptLiveSession:
         # arrive later are LATE, counted and never re-attributed.
         self._cursor: int | None = None
         self.late_fragments = 0
+        # The operator's Steer took the pending words (claim_unsent): the next delegation that
+        # finds nothing left is told so quietly, instead of "nothing was heard".
+        self.steer_claimed = False
         # The model's voice as SEGMENTS on the server timeline, fed by output transcripts and
         # output audio in any arrival order. Each segment is a connected run with its own sink
         # key, so a cut cancels exactly the speech it touches and nothing else:
@@ -238,6 +243,21 @@ class GptLiveSession:
     def unclaimed_words(self) -> str:
         """The operator's words no delegation has claimed yet (a relay carries them over)."""
         return "".join(frag.text for frag in self._pending).strip()
+
+    def claim_unsent(self) -> str:
+        """Take every word no delegation has claimed, for the operator's own Steer.
+
+        The cursor moves past them exactly as a delegation's would, so a later delegation
+        cannot hand the same words over a second time: its span starts after these."""
+        span, self._pending = self._pending, []
+        starts = [frag.start_ms for frag in span if frag.start_ms is not None]
+        if starts:
+            last = max(starts)
+            self._cursor = last if self._cursor is None else max(self._cursor, last)
+        text = "".join(frag.text for frag in span).strip()
+        if text:
+            self.steer_claimed = True
+        return text
 
     def live_keys(self) -> list[str]:
         return [key for seg in self._segments if not seg.dead for key in seg.keys]

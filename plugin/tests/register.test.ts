@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { KEYBOARD, failure, liveFields, summarize } from '../hooks/register'
+import { KEYBOARD, failure, liveFields, steerNote, summarize } from '../hooks/register'
 
 const SID = '0b4e7c1a-9d2f-4e55-8a3b-1c2d3e4f5a6b'
 const OTHER_SID = '9f8e7d6c-5b4a-4321-8fed-cba987654321'
@@ -323,7 +323,7 @@ describe('the call console', () => {
     expect((await ui.find({ type: 'Button', key: 'steer' }))?.props.variant).toBe('primary')
   })
 
-  test('Steer with unsent words asks the voice process once and ends no turn', async ($: Engine, on: On) => {
+  test('Steer tells the voice process to send what it heard, and ends no turn by itself', async ($: Engine, on: On) => {
     const files = status({ ...LIVE, unsent: { chars: 3, preview: '停一下' }, queued: [] })
     const { clock } = world(on, { files })
     const { runs, aborted } = processes(on, files)
@@ -345,7 +345,6 @@ describe('the call console', () => {
     await ui.press({ key: 'steer' })
     await clock.settle()
     expect(aborted).toEqual([turnId])
-    expect(runs.some(argv => argv.at(-1) === 'steer')).toBe(false) // nothing unsent to ask for
     await clock.advance(2000) // still queued on later ticks: no second abort
     expect(aborted).toEqual([turnId])
   })
@@ -360,7 +359,7 @@ describe('the call console', () => {
     await ui.press({ key: 'steer' })
     await clock.settle()
     expect(aborted).toEqual([])
-    expect(runs.some(argv => argv.at(-1) === 'steer')).toBe(false)
+    expect(runs).toContainEqual([BIN, '--session', SID, 'steer']) // the voice process decides what is unsent
   })
 
   test('with no turn running, a waiting message needs no Steer and none is kept for later', async ($: Engine, on: On) => {
@@ -399,5 +398,26 @@ describe('reading the voice process', () => {
     )
     expect(failure('', 3)).toBe('the voice process ended (exit 3)')
     expect(failure(`voice: ${'x'.repeat(300)}`, 1)).toHaveLength(160)
+  })
+
+  test('steerNote says what the voice process did with a Steer', () => {
+    expect(steerNote('sent')).toBe('steered: sent what you said')
+    expect(steerNote('nothing_unsent')).toBe('')
+    expect(steerNote('refused:owner_lost')).toBe('steer did not send (refused:owner_lost)')
+    expect(steerNote(undefined)).toBe('')
+  })
+
+  test('a Steer answer shows once in the band', async ($: Engine, on: On) => {
+    const files = status({ ...LIVE, steer: { id: 'a1', result: 'sent' } })
+    const { clock } = world(on, { files })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount({
+      plugin: 'bettercallgpt',
+      component: 'AbovePrompt',
+      surface: 'terminal',
+      props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    })
+    await clock.advance(500)
+    expect(await ui.find({ type: 'Text', text: 'steered: sent what you said ' })).toBeDefined()
   })
 })
