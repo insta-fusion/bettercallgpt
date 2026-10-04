@@ -139,7 +139,8 @@ Voice Live (delete the `VOICE_LIVE_PROVIDER=gpt_live` line).
     a tool call cannot pass for your press.
   - **`Steer`** sends what you said and the voice has not handed over yet, right now, and ends
     Claude's running turn so your words are read next. Only your press does this; nothing is
-    sent twice.
+    sent twice. Words wait unsent only on the GPT-Live voice; on Voice Live (the default)
+    each request is handed over as you finish it, and `Steer` brings a waiting message forward.
   - **`Hang up`** ends the call (so does `/clear` or closing the session). `/call`, `/steer`
     and `/hangup` do the same as the buttons; `/call-icons` picks the symbols.
   - During a call the row shows the last 60 characters you said that are not sent yet

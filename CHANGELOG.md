@@ -15,10 +15,11 @@ All notable changes to this project are documented here. Format follows
     fresh single-use nonce, and is refused unless Claude Code itself spawned the command.
   - `Steer` sends what the voice heard and has not handed over, as one request that ends Claude's
     running turn; a spoken message already waiting in the queue is brought forward the same way.
-    The new `bettercallgpt steer` command carries it; nothing is sent twice.
+    The new `bettercallgpt steer` command carries it; nothing is sent twice. Unsent words exist
+    only on the GPT-Live voice; on Voice Live, Steer brings a waiting message forward.
   - `Hang up`, `/clear` and closing the session end the call.
   - `status.json` gains `unsent` (character count and the last 60 characters, credentials masked),
-    `queued` (tags waiting in the session's queue) and `steer` (the last Steer's result). The
+    `queued` (tags waiting in the session's queue) and `steer` (the last Steer's result). `bettercallgpt status` prints the count, never the words. The
     statusline segment shows ` ✎` for unsent words and ` ⇪N` for queued messages.
 - The same module observes permission requests. While this session is on a call it writes
   `permission.json` into the call's

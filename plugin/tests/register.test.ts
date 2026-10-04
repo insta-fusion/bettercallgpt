@@ -205,7 +205,7 @@ describe('the call console', () => {
   type Spawned = { argv: readonly string[]; env?: Record<string, string> }
   /** The host's processes: `command -v`, the launcher's stop and steer, and the voice child,
    * which runs until the test ends it (or exits at once with `exit`). */
-  function processes(on: On, files: Map<string, string>, options: { exit?: { code: number; stderr: string }; installed?: boolean } = {}) {
+  function processes(on: On, files: Map<string, string>, options: { exit?: { code: number; stderr: string }; installed?: boolean; old?: boolean } = {}) {
     const runs: string[][] = []
     const spawned: Spawned[] = []
     const aborted: string[] = []
@@ -215,6 +215,10 @@ describe('the call console', () => {
       if (e.argv[0] === '/bin/sh') {
         const isInstalled = options.installed ?? true
         return { value: { exitCode: isInstalled ? 0 : 1, stdout: isInstalled ? `${BIN}\n` : '', stderr: '' } }
+      }
+      if (e.argv.at(-1) === '--help') {
+        // An installed command from before the console lists no --mod.
+        return { value: { exitCode: 0, stdout: options.old ? 'usage: start status stop' : 'usage: [--mod] start steer', stderr: '' } }
       }
       if (e.argv.at(-1) === 'stop') end?.()
       return { value: { exitCode: 0, stdout: '{}', stderr: '' } }
@@ -278,6 +282,19 @@ describe('the call console', () => {
     await clock.settle()
     expect(runs).toContainEqual([BIN, '--session', SID, 'stop'])
     expect(await ui.find({ type: 'Button', key: 'call' })).toBeDefined()
+  })
+
+  test('an installed bettercallgpt from before the console is passed over for the pinned release', async ($: Engine, on: On) => {
+    const files = new Map<string, string>()
+    const { clock } = world(on, { files })
+    const { spawned, end } = processes(on, files, { old: true })
+    await start($)
+    const ui = await $.ui.mount({ ...BAND_SITE, surface: 'terminal' })
+    await ui.press({ key: 'call' })
+    await clock.settle()
+    expect(spawned[0]?.argv[0]).toBe('uvx')
+    end()
+    await clock.settle()
   })
 
   test('without an installed bettercallgpt the pinned release runs through uvx', async ($: Engine, on: On) => {

@@ -164,10 +164,15 @@ export function failure(stderr: string, code: unknown): string {
   return last.length <= 160 ? last : `${last.slice(0, 159)}…`
 }
 
-/** How the voice process is run: an installed `bettercallgpt` when PATH has one (a checkout
- * installed for development), otherwise the pinned release through uvx. */
+/** How the voice process is run: an installed `bettercallgpt` that knows the console's
+ * commands (a checkout installed for development), otherwise the pinned release through uvx. */
 async function launcher($: EngineInterface): Promise<string[]> {
   if (command !== undefined) return command
+  // An installed command from before the call console knows neither `--mod` nor `steer`.
+  const fits = (bin: string) =>
+    $.process
+      .run([bin, '--help'])
+      .then(result => result.exitCode === 0 && result.stdout.includes('--mod'), () => false)
   let found = await $.process
     .run(['/bin/sh', '-c', 'command -v bettercallgpt'])
     .then(result => (result.exitCode === 0 ? result.stdout.trim() : ''), () => '')
@@ -178,7 +183,8 @@ async function launcher($: EngineInterface): Promise<string[]> {
     const local = `${home ?? ''}/.local/bin/bettercallgpt`
     if (local.startsWith('/') && (await $.fs.exists(local).catch(() => false))) found = local
   }
-  command = found.startsWith('/') ? [found] : ['uvx', '--from', RELEASE, 'bettercallgpt']
+  command =
+    found.startsWith('/') && (await fits(found)) ? [found] : ['uvx', '--from', RELEASE, 'bettercallgpt']
   return command
 }
 
@@ -289,6 +295,7 @@ export function steerNote(result: unknown): string {
   if (typeof result !== 'string' || result === '') return ''
   if (result === 'sent') return ''
   if (result === 'nothing_unsent') return ''
+  if (result === 'uncertain') return 'steer: not confirmed (it is not sent again)'
   return `steer did not send (${result.slice(0, 60)})`
 }
 

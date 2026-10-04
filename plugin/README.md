@@ -35,7 +35,8 @@ press: **Call**, **Steer** (send what you just said now; Claude's running turn m
     no model turn runs and no permission prompt is shown. The voice process refuses this kind of
     start unless Claude Code itself spawned it.
   - **Steer** asks the voice process to send what you said and it has not handed over yet, and ends
-    Claude's running turn so that message is read next. Only your press does this.
+    Claude's running turn so that message is read next. Only your press does this. Unsent words exist
+    only on the GPT-Live voice; on Voice Live (the default) Steer brings a waiting message forward.
   - **Hang up**, `/clear` and closing the session end the call.
   - It reads `VOICE_LISTEN_STATE_DIR`, `XDG_STATE_HOME` and `HOME` to find the state directory and
     reads `status.json` there every 2 seconds (twice a second during a call). During a call that file

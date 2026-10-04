@@ -306,7 +306,7 @@ class PluginTests(unittest.TestCase):
                                      "ui.toast", "store.get", "store.set"})
         # $.process.run is written across lines (`$.process\n.run([`): count it by its argv.
         self.assertEqual(source.count("$.process.spawn("), 1)
-        self.assertEqual(source.count(".run(["), 3)
+        self.assertEqual(source.count(".run(["), 4)
         self.assertEqual(sorted(re.findall(r"'--session', sessionId, (?:'--nonce', nonce, '--mod', )?'(\w+)'\]", source)),
                          ["start", "steer", "stop"])
         self.assertIn(".run(['/bin/sh', '-c', 'command -v bettercallgpt'])", source)

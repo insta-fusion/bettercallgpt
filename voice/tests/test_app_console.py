@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -329,3 +330,47 @@ class LedgerStamps(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StartupBoundary(unittest.IsolatedAsyncioTestCase):
+    """A TERM while the launcher waits for the audio lock: no device and no socket opens."""
+
+    async def test_a_stop_before_the_devices_open_opens_nothing(self):
+        from voice.app import daemon as daemon_mod
+
+        daemon = daemon_mod.VoiceDaemon.__new__(daemon_mod.VoiceDaemon)
+        daemon.loop = mock.Mock()
+        daemon.status = mock.Mock()
+        sink = daemon.sink = mock.Mock()
+        session = daemon.session = mock.Mock(start=mock.AsyncMock(), close=mock.AsyncMock())
+        daemon.control = daemon.capture = daemon.ledger = None
+        daemon._lock_held = False
+
+        def acquire():
+            daemon._shut = True               # the TERM landed during the wait
+            return True
+
+        daemon.acquire_audio = acquire
+        with mock.patch.object(daemon_mod.voice_platform, "install_signal"), \
+                mock.patch.object(daemon, "_farewell", mock.AsyncMock(), create=True):
+            await asyncio.wait_for(daemon.start(), 2.0)
+        sink.start.assert_not_called()
+        session.start.assert_not_called()
+
+
+class StatusOutput(unittest.TestCase):
+    def test_the_status_command_prints_the_count_never_the_words(self):
+        import io
+        import tempfile
+        from contextlib import redirect_stdout
+        from voice.app import daemon as daemon_mod
+
+        with tempfile.TemporaryDirectory() as root:
+            status = daemon_mod.Status(Path(root) / "s1" / "status.json", session_id="s1")
+            status.show(unsent={"chars": 11, "preview": "secret plan"})
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, {"VOICE_LISTEN_STATE_DIR": root}), \
+                    redirect_stdout(out):
+                daemon_mod.cmd_status(mock.Mock(session="s1", pretty=False))
+        self.assertNotIn("secret plan", out.getvalue())
+        self.assertEqual(json.loads(out.getvalue())["unsent"], {"chars": 11})

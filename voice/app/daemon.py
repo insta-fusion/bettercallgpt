@@ -882,7 +882,11 @@ class VoiceDaemon:
             self._publish_unsent(self.session)
             try:
                 receipt = await self.loop.operator_request(text)
-                result = "sent" if receipt.outcome != "refused" else f"refused:{receipt.reason}"
+                if receipt.outcome == "refused":
+                    result = f"refused:{receipt.reason}"
+                else:
+                    # Not confirmed is said as such, and never sent again.
+                    result = "uncertain" if receipt.outcome == "uncertain" else "sent"
                 if receipt.outcome != "refused":
                     # Quiet context, so the voice model knows and does not hand it over again.
                     await self.voice.context(STEER_SENT_NOTE)
@@ -1036,7 +1040,16 @@ class VoiceDaemon:
                 lambda: self._spawn(self.shutdown("terminated"), "shutdown"))
         except (NotImplementedError, RuntimeError):
             pass
-        if not self.acquire_audio():
+        # The wait for the audio lock runs off the loop, so a TERM or a stop that arrives
+        # meanwhile is handled, and nothing opens behind it: no speaker, microphone or socket.
+        acquired = await asyncio.get_running_loop().run_in_executor(None, self.acquire_audio)
+        if getattr(self, "_shut", False):
+            if self._lock_held:
+                self._lock.release()
+                self._lock_held = False
+            await self.shutdown("terminated")
+            return
+        if not acquired:
             self.status.end("audio busy")
             raise RuntimeError("audio-device busy (another voice surface is active)")
         self.sink.start()
@@ -1802,6 +1815,11 @@ def cmd_status(args: argparse.Namespace) -> int:
     if data is None:
         print(json.dumps({"phase": "absent", "path": str(path)}))
         return 1
+    unsent = data.get("unsent")
+    if isinstance(unsent, dict):
+        # The words themselves stay in the state directory, for the band. This output is read
+        # by the agent (`/bettercallgpt:status` runs it): words not sent must not reach it here.
+        data["unsent"] = {"chars": unsent.get("chars", 0)}
     print(json.dumps(data, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
 
