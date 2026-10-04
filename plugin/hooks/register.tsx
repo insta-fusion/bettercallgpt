@@ -49,6 +49,7 @@ const LIVE = 'green'
 const WARN = 'yellow'
 const QUEUE = 'cyan'
 const WORK = 'magenta'
+const END = 'red'
 
 export const KEYBOARD = "voice can't approve, use your keyboard"
 export const IDLE: CallView = { phase: 'idle', unsent: '', queued: 0, working: false, note: '' }
@@ -396,7 +397,10 @@ export const register: Register = on => {
           {below}
           <Box>
             <Text color={BRAND} bold>
-              ☎ Better Call GPT{' '}
+              Better Call GPT{' '}
+            </Text>
+            <Text color={LIVE} bold>
+              ☎{' '}
             </Text>
             <Button key="call" label="Call" hotkey="c" variant="primary" onPress={() => void startCall($)} />
             <Text color={view.note === '' ? undefined : WARN} dimColor={view.note === ''} wrap="truncate-end">
@@ -413,6 +417,9 @@ export const register: Register = on => {
           <Box>
             <Text color={BRAND} bold>
               ☎ Calling…{' '}
+            </Text>
+            <Text color={END} bold>
+              ✕{' '}
             </Text>
             <Button key="hangup" label="Hang up" hotkey="h" onPress={() => void hangUp($)} />
           </Box>
@@ -441,6 +448,9 @@ export const register: Register = on => {
           )}
           {view.working ? <Text color={WORK}>⚙ Claude working </Text> : null}
           {view.note === '' ? null : <Text dimColor>{view.note} </Text>}
+          <Text color={QUEUE} bold>
+            ➤{' '}
+          </Text>
           <Button
             key="steer"
             label="Steer"
@@ -448,7 +458,9 @@ export const register: Register = on => {
             variant={view.unsent !== '' || view.queued > 0 ? 'primary' : 'secondary'}
             onPress={() => void steer($)}
           />
-          <Text> </Text>
+          <Text color={END} bold>
+            {' '}✕{' '}
+          </Text>
           <Button key="hangup" label="Hang up" hotkey="h" variant="secondary" onPress={() => void hangUp($)} />
         </Box>
         <Text dimColor wrap="truncate-end">
