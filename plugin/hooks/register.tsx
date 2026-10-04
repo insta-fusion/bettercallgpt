@@ -59,7 +59,8 @@ const NARROW = 80
 // needs a Nerd Font and has a real hung-up handset and a steering wheel. `emoji` puts emoji in
 // the labels; `none` is words only.
 export const ICON_SETS = {
-  keys: { call: '☎', steer: '⎈', hangup: '☎', live: '● ' },
+  // Steer keeps the wheel emoji in its label: no plain character reads as a steering wheel.
+  keys: { call: '☎', steer: '🛞 ', hangup: '☎', live: '● ' },
   nerd: { call: '\uf095', steer: '\u{f04d4}', hangup: '\u{f03fa}', live: '\u{f036c} ' },
   emoji: { call: '📞 ', steer: '🛞 ', hangup: '📴 ', live: '🎙 ' },
   none: { call: '', steer: '', hangup: '', live: '● ' },
@@ -528,10 +529,10 @@ export const register: Register = on => {
             {canSteer && view.note !== '' ? <Text dimColor>{view.note}</Text> : null}
           </Box>
           <Box flexShrink={0} gap={1}>
-            {tint(icon.steer, QUEUE)}
+            {icons === 'nerd' ? tint(icon.steer, QUEUE) : null}
             <Button
               key="steer"
-              label={`${inLabel(icon.steer)}Steer`}
+              label={`${icons === 'nerd' ? '' : icon.steer}Steer`}
               hotkey="s"
               variant={canSteer ? 'primary' : 'secondary'}
               dimColor={!canSteer}
