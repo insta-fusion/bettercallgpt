@@ -4,6 +4,41 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versions follow
 [SemVer](https://semver.org/) with a pre-1.0 caveat: minor bumps may break.
 
+## [0.2.0] - 2026-10-04
+
+### Added
+- **Call console.** The plugin carries one hooks module (`plugin/hooks/register.tsx`, needs Claude
+  Code 2.1.287+; CLI and the desktop Code tab) that draws one row above the prompt: `Call`,
+  `Steer` and `Hang up`, also as `/call`, `/steer` and `/hangup` (`/call-icons` picks the symbols).
+  - `Call` starts the voice process as a child of the Claude Code process, on your press: no model
+    turn, no permission prompt. The new `--mod` start binds on ancestry, the session registry and a
+    fresh single-use nonce, and is refused unless Claude Code itself spawned the command.
+  - `Steer` sends what the voice heard and has not handed over, as one request that ends Claude's
+    running turn; a spoken message already waiting in the queue is brought forward the same way.
+    The new `bettercallgpt steer` command carries it; nothing is sent twice. Unsent words exist
+    only on the GPT-Live voice; on Voice Live, Steer brings a waiting message forward.
+  - `Hang up`, `/clear` and closing the session end the call.
+  - `status.json` gains `unsent` (character count and the last 60 characters, credentials masked),
+    `queued` (tags waiting in the session's queue) and `steer` (the last Steer's result). `bettercallgpt status` prints the count, never the words. The
+    statusline segment shows ` ✎` for unsent words and ` ⇪N` for queued messages.
+- The same module observes permission requests. While this session is on a call it writes
+  `permission.json` into the call's
+  own state directory when Claude makes a permission request, and the call says what Claude is
+  asking for ("Claude is asking to use Bash: … — answer on your keyboard"), in any terminal, not
+  only in an Orca pane. It checks for a call every 2 seconds in every session where the plugin is
+  loaded (local files and three env vars, no network). It never answers or changes a request; turn
+  it off with `disableAllHooks` or `/plugin`.
+- `/bettercallgpt:on`, `:status` and `:off` are unchanged and need no hooks module.
+- The voice process reads `permission.json` (deduped, only this call's instance, never a previous
+  call's) and announces it with no options, so a spoken word can never approve it. Credentials are
+  masked in the whole summary before it is shortened; a summary over 2000 characters is left out.
+  On an Orca pane, a request the screen already announced (same tool and command) is said once.
+- Disclosure: the plugin README lists OpenAI Realtime (experimental) among the voice services, and
+  says a one-line summary of each permission request reaches the selected voice service.
+- While a call runs, the voice process refreshes `at` in `status.json` every 10 s. The hooks module
+  takes a call as live only while `at` is at most 30 s old, so a status left behind by a killed
+  process shows no band and gets no `permission.json`.
+
 ## [0.1.1] - 2026-10-02
 
 ### Added

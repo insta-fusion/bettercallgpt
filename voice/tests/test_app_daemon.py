@@ -743,6 +743,301 @@ class ControlChannel(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first, second, "a second stop must not re-end the session")
 
 
+class PermissionChannel(unittest.IsolatedAsyncioTestCase):
+    """permission.json: what the plugin's hooks module writes when a permission prompt opens
+    while the call is live. Read once per prompt, never a previous call's, never half a file."""
+
+    SINCE = 1000.0
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.path = self.dir / daemon_mod.PERMISSION_NAME
+        self.seen: list[dict] = []
+
+    def _write(self, payload) -> None:
+        text = payload if isinstance(payload, str) else json.dumps(payload)
+        self.path.write_text(text, encoding="utf-8")
+
+    async def _watcher(self):
+        """Fake watches, one per path, fired by hand (ControlChannel.FakeWatch)."""
+        watches: dict[Path, ControlChannel.FakeWatch] = {}
+
+        def open_watch(path):
+            watches[Path(path)] = ControlChannel.FakeWatch()
+            return watches[Path(path)]
+
+        async def on_command(command):
+            pass
+
+        controller = daemon_mod.ControlWatcher(self.dir, on_command, open_watch=open_watch,
+                                               on_permission=self.seen.append,
+                                               since=self.SINCE)
+        controller.start(asyncio.get_running_loop())
+
+        def cleanup():
+            controller.close()
+            for watch in watches.values():
+                if not watch.closed:
+                    watch.close()
+        self.addCleanup(cleanup)
+        return controller, watches
+
+    async def test_a_report_is_read_once_and_a_new_one_after_it(self):
+        _controller, watches = await self._watcher()
+        self._write({"at": 1001.5, "tool": "Bash", "summary": "touch hello.txt"})
+        for _ in range(3):                         # a directory event can fire repeatedly
+            watches[self.dir].fire()
+            await _settle()
+        self.assertEqual(self.seen, [{"at": 1001.5, "tool": "Bash",
+                                      "summary": "touch hello.txt"}])
+        # Rewritten in place: only the FILE's watch sees it (kqueue on a directory does not).
+        self._write({"at": 1002.0, "tool": "Edit", "summary": "/repo/a.py"})
+        watches[self.path].fire()
+        await _settle()
+        self.assertEqual([e["tool"] for e in self.seen], ["Bash", "Edit"])
+
+    async def test_a_report_older_than_the_call_is_ignored(self):
+        self._write({"at": self.SINCE - 60, "tool": "Bash", "summary": "rm -rf build/"})
+        _controller, watches = await self._watcher()
+        watches[self.dir].fire()
+        await _settle()
+        self.assertEqual(self.seen, [])
+        self.assertIn(self.path, watches, "an existing file is watched from the start")
+
+    async def test_a_half_written_report_is_read_again_when_the_write_finishes(self):
+        _controller, watches = await self._watcher()
+        self._write('{"at": 1003.0, "tool": "Ba')
+        watches[self.dir].fire()
+        await _settle()
+        self.assertEqual(self.seen, [])
+        self._write({"at": 1003.0, "tool": "Bash", "summary": "make"})
+        watches[self.path].fire()
+        await _settle()
+        self.assertEqual(self.seen, [{"at": 1003.0, "tool": "Bash", "summary": "make"}])
+
+    def test_bad_reports_are_ignored(self):
+        controller = daemon_mod.ControlWatcher(self.dir, None, on_permission=self.seen.append,
+                                               since=self.SINCE)
+        for bad in ("", "[]", "null", '{"tool": "Bash"}', '{"at": "1001", "tool": "Bash"}',
+                    '{"at": true, "tool": "Bash"}', '{"at": NaN, "tool": "Bash"}',
+                    '{"at": 1001, "tool": "  "}', '{"at": 1001, "tool": 7}'):
+            self._write(bad)
+            self.assertIsNone(controller.read_permission(), bad)
+        self.path.unlink()
+        self.assertIsNone(controller.read_permission())
+
+    def test_the_text_is_one_short_line(self):
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE)
+        self._write({"at": 1004, "tool": "Bash\n", "summary": "echo a\n\techo b\x1b[2J" + "x" * 900})
+        event = controller.read_permission()
+        self.assertEqual(event["tool"], "Bash")
+        self.assertTrue(event["summary"].startswith("echo a echo b [2J"))
+        self.assertEqual(len(event["summary"]), daemon_mod.PERMISSION_TEXT_MAX)
+        self.assertEqual(event["at"], 1004.0)
+
+    def test_a_credential_across_the_cut_is_masked_whole_first(self):
+        """Masking matches whole known values, so a cut made first could leave a credential's
+        prefix it no longer recognises. The text is masked whole, then cut."""
+        secret = "sk-test-SECRET-0123456789abcdef"
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE)
+        with mock.patch.dict(os.environ, {"VOICE_TEST_API_KEY": secret}):
+            for cut in (daemon_mod.PERMISSION_TEXT_MAX, 300):   # the cut now, and the old one
+                summary = "x" * (cut - 10) + secret + " https://example.com"   # across the cut
+                self._write({"at": 1010 + cut, "tool": "Bash", "summary": summary})
+                event = controller.read_permission()
+                self.assertNotIn(secret[:6], event["summary"], cut)
+                self.assertLessEqual(len(event["summary"]), daemon_mod.PERMISSION_TEXT_MAX)
+
+    def test_a_summary_past_the_limit_is_dropped_whole(self):
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE)
+        self._write({"at": 1011, "tool": "Bash",
+                     "summary": "y" * (daemon_mod.PERMISSION_SUMMARY_LIMIT + 1)})
+        self.assertEqual(controller.read_permission(), {"at": 1011.0, "tool": "Bash", "summary": ""})
+
+    def test_a_notice_for_another_call_instance_is_ignored(self):
+        """A hook can finish writing after a new call began in the same session: the notice
+        carries the status `instance` it saw, and only this call's is read."""
+        controller = daemon_mod.ControlWatcher(self.dir, None, since=self.SINCE,
+                                               instance="call-2")
+        for other in ({"instance": "call-1"}, {}, {"instance": None}):
+            self._write({"at": 1012, "tool": "Bash", "summary": "ls", **other})
+            self.assertIsNone(controller.read_permission(), other)
+        self._write({"at": 1012, "tool": "Bash", "summary": "ls", "instance": "call-2"})
+        self.assertEqual(controller.read_permission()["summary"], "ls")
+
+    async def test_without_a_permission_reader_the_file_is_never_watched(self):
+        self._write({"at": 1005, "tool": "Bash", "summary": "x"})
+        opened = []
+
+        def open_watch(path):
+            opened.append(Path(path))
+            return ControlChannel.FakeWatch()
+
+        async def on_command(command):
+            pass
+
+        controller = daemon_mod.ControlWatcher(self.dir, on_command, open_watch=open_watch)
+        controller.start(asyncio.get_running_loop())
+        controller.close()
+        self.assertEqual(opened, [self.dir])
+
+    async def test_a_real_watch_sees_a_rewrite_in_place(self):
+        """The hooks module's `$.fs.write` truncates and writes the same inode (measured). On
+        macOS that is invisible to the directory's kqueue; the file's own watch must see it."""
+        from voice import platform as voice_platform
+
+        controller = daemon_mod.ControlWatcher(
+            self.dir, None, on_permission=self.seen.append, since=self.SINCE,
+            open_watch=lambda p: voice_platform.watch(p, poll_s=0.01))
+        controller.start(asyncio.get_running_loop())
+        self.addCleanup(controller.close)
+
+        async def until(count):
+            for _ in range(200):
+                if len(self.seen) >= count:
+                    return
+                await asyncio.sleep(0.01)
+
+        self._write({"at": 1006.0, "tool": "Bash", "summary": "first"})
+        await until(1)
+        inode = self.path.stat().st_ino
+        with open(self.path, "r+", encoding="utf-8") as handle:     # in place, same inode
+            handle.truncate(0)
+            handle.write(json.dumps({"at": 1007.0, "tool": "Bash", "summary": "second"}))
+        self.assertEqual(self.path.stat().st_ino, inode)
+        await until(2)
+        self.assertEqual([e["summary"] for e in self.seen], ["first", "second"])
+
+    async def test_the_daemon_hands_a_report_to_a_backend_that_can_announce_it(self):
+        announced = []
+
+        class Announcing:
+            async def announce_permission(self, *, tool, summary, at):
+                announced.append((tool, summary, at))
+                return True
+
+        daemon = VoiceDaemon(session_id="s", provider="voice_live", backend_name="process",
+                             state=self.dir)
+        daemon.backend = Announcing()
+        daemon.on_permission({"at": 1008.0, "tool": "Bash", "summary": "ls"})
+        await _settle()
+        self.assertEqual(announced, [("Bash", "ls", 1008.0)])
+        daemon.backend = object()                    # the process backend: nothing to say
+        daemon.on_permission({"at": 1009.0, "tool": "Bash", "summary": "ls"})
+        await _settle()
+        self.assertEqual(len(announced), 1)
+
+
+class StatusHeartbeat(unittest.IsolatedAsyncioTestCase):
+    """While the call runs, `at` is refreshed every STATUS_HEARTBEAT_S, so a status a killed
+    process left behind reads as stale (the hooks module trusts `at` for 30 s)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+
+    def _daemon(self, clock):
+        daemon = VoiceDaemon.__new__(VoiceDaemon)
+        daemon.status = Status(self.dir / "status.json", session_id="s", now=lambda: clock[0])
+        daemon.status.set(phase="running", relay="qualified")
+        return daemon
+
+    async def test_at_is_refreshed_every_period_on_a_fake_clock(self):
+        clock = [1000.0]
+        daemon = self._daemon(clock)
+        waits, seen_at = [], []
+
+        async def fake_wait_for(awaitable, timeout):
+            awaitable.close()                       # the stop event's wait, never started
+            waits.append(timeout)
+            seen_at.append(Status.read(self.dir / "status.json")["at"])
+            clock[0] += timeout
+            if len(waits) == 4:
+                daemon._shut = True                 # the ending starts during the 4th wait
+            raise asyncio.TimeoutError
+
+        await daemon._heartbeat(daemon_mod.STATUS_HEARTBEAT_S, wait_for=fake_wait_for)
+        self.assertEqual(waits, [daemon_mod.STATUS_HEARTBEAT_S] * 4)
+        self.assertEqual(seen_at, [1000.0, 1010.0, 1020.0, 1030.0])
+        final = Status.read(self.dir / "status.json")
+        self.assertEqual(final["at"], 1030.0, "no beat once the ending started")
+        self.assertEqual((final["phase"], final["relay"]), ("running", "qualified"))
+
+    async def test_the_ending_stops_it_at_once(self):
+        daemon = self._daemon([1000.0])
+        task = asyncio.ensure_future(daemon._heartbeat(3600.0))
+        await asyncio.sleep(0)
+        daemon._shut = True
+        daemon._stopping().set()
+        await asyncio.wait_for(task, 1.0)
+        self.assertEqual(Status.read(self.dir / "status.json")["at"], 1000.0)
+
+    async def test_the_run_beats_with_the_declared_cadence(self):
+        daemon = _idle_daemon(_IdleLoop(), _Backend("idle"))
+        beats = []
+
+        async def heartbeat(every):
+            beats.append(every)
+            await asyncio.Event().wait()
+
+        daemon._heartbeat = heartbeat
+        with mock.patch.object(daemon_mod.voice_config, "cfg", side_effect=_idle_cfg("0.0005")):
+            await asyncio.wait_for(daemon._run(), 2.0)
+        self.assertEqual(beats, [daemon_mod.STATUS_HEARTBEAT_S])
+
+    async def test_its_own_writes_wake_the_watcher_into_no_work(self):
+        """The heartbeat writes into the directory the control watcher watches. Each wake must
+        dedupe the control and permission files it already read, and nothing may loop."""
+        from voice import platform as voice_platform
+
+        commands, reports, wakes = [], [], []
+
+        async def on_command(command):
+            commands.append(command)
+
+        controller = daemon_mod.ControlWatcher(
+            self.dir, on_command, on_permission=reports.append, since=0.0,
+            open_watch=lambda p: voice_platform.watch(p, poll_s=0.01))
+        real_wake = controller._wake
+
+        def counting_wake(drained=False):
+            wakes.append(1)
+            real_wake(drained)
+
+        controller._wake = counting_wake
+        controller.start(asyncio.get_running_loop())
+        self.addCleanup(controller.close)
+
+        async def settle_until(predicate):
+            for _ in range(200):
+                if predicate():
+                    return
+                await asyncio.sleep(0.01)
+
+        atomic_write(self.dir / daemon_mod.CONTROL_NAME, {"command": "stop", "at": 5.0})
+        (self.dir / daemon_mod.PERMISSION_NAME).write_text(
+            json.dumps({"at": 6.0, "tool": "Bash", "summary": "ls"}), encoding="utf-8")
+        await settle_until(lambda: commands and reports)
+        self.assertEqual((commands, len(reports)), (["stop"], 1))
+
+        before = len(wakes)
+        clock = [100.0]
+        status = Status(self.dir / "status.json", session_id="s", now=lambda: clock[0])
+        for _ in range(5):                                   # five beats
+            clock[0] += 10
+            status.set()
+            await asyncio.sleep(0.03)
+        await settle_until(lambda: len(wakes) > before)
+        self.assertGreater(len(wakes), before, "the beats do wake the directory watch")
+        settled = len(wakes)
+        await asyncio.sleep(0.2)
+        self.assertEqual(len(wakes), settled, "nothing loops once the beats stop")
+        self.assertEqual((commands, len(reports)), (["stop"], 1), "deduped: no repeat work")
+
+
 class ClaudeCodeWiring(unittest.IsolatedAsyncioTestCase):
     """The real graph, from a fake binding and a fake terminal reader.
 

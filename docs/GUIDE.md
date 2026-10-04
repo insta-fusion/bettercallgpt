@@ -6,14 +6,14 @@ The reference half of the [README](../README.md): the status line, running witho
 
 **Status line (terminal).** `bettercallgpt statusline` prints `🎙 voice` while this session's call
 is live (`🎙 voice ↻` while the voice connection is renewed). With the skill's `uvx` setup the
-command is `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.1.1 bettercallgpt statusline`;
+command is `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.0 bettercallgpt statusline`;
 put it in `~/.claude/settings.json` → `statusLine`, or ask your agent to (update the version in it
 after an upgrade). The desktop app shows no status line — use `/bettercallgpt:status`.
 
 **Keep voice turns understood after `/compact`:** add [docs/HOST-INSTRUCTIONS.md](HOST-INSTRUCTIONS.md)
 to your `CLAUDE.md`.
 
-**Without the plugin.** Install the command once — `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.1.1"` (on Linux also install PortAudio) — or put the `uvx --from …` prefix above in front of every `bettercallgpt` below. Add [docs/HOST-INSTRUCTIONS.md](HOST-INSTRUCTIONS.md) to your
+**Without the plugin.** Install the command once — `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.2.0"` (on Linux also install PortAudio) — or put the `uvx --from …` prefix above in front of every `bettercallgpt` below. Add [docs/HOST-INSTRUCTIONS.md](HOST-INSTRUCTIONS.md) to your
 `CLAUDE.md` (or `AGENTS.md`) once, so the agent treats `⟨v#…⟩` lines as you speaking. Then ask
 the agent to start voice; it runs, from its own Bash tool:
 
@@ -35,7 +35,18 @@ even if the pane cannot be read, and when Orca reports none, or is too old to re
 the call fails, it falls back to reading the pane. Otherwise (no
 `orca` CLI, a stale handle, tmux, a headless session) the start proceeds exactly as above.
 `bettercallgpt doctor` shows it as `orca_pane`; export `BETTERCALLGPT_ORCA_PANE=0` to skip it.
-Approvals are always answered on the keyboard. The session id comes from
+Approvals are always answered on the keyboard. In any terminal (and the desktop Code tab),
+the plugin's hooks module also tells the call when Claude makes a permission request, by writing
+`permission.json` into the call's state directory. It is a request, not proof a dialog is on
+screen: another hook or Claude Code may decide it, and sandbox network prompts are not covered.
+On Claude Code 2.1.287+ the same module draws the call row above the prompt (`Call`, `Steer`,
+`Hang up`). `Call` starts `bettercallgpt --mod start` as Claude Code's own child with a fresh
+nonce: there is no Bash call in the transcript to find, so this start binds on ancestry, the
+session registry and the nonce, and is refused unless Claude Code itself spawned it. `Steer` runs
+`bettercallgpt steer`: the voice process sends what it heard and has not handed over as one
+request that ends Claude's running turn.
+On an Orca pane, when the pane already announced a dialog showing the same tool and command,
+the request is not said twice (best effort). The session id comes from
 `CLAUDE_CODE_SESSION_ID` (`VOICE_SESSION_ID` overrides it). The controls address a session by id: from the agent's own Bash
 tool the id is already in the environment, so the agent (or you, by asking it) runs
 

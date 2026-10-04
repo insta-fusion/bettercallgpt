@@ -395,6 +395,38 @@ class AgentLoop:
             "note": _receipt_words(receipt.outcome, receipt.reason),
         }, speak=receipt.outcome != "posted")
 
+    async def operator_request(self, text: str) -> Any:
+        """Words the operator sent with Steer: no model decided this hand-off, the operator's
+        own press did. Its identity is the press, so there is no response to join; everything
+        else is a dispatch like any other — heard, written ahead, sent once, never resent.
+        `now`: the press means "take this now", which ends the backend's running turn."""
+        request_id = self._next_id("req")
+        item_id = f"{request_id}:steer"
+        self.log.complete_transcript(item_id, text)
+        self.log.retire_candidate(item_id)
+        self.log.note_turn(OPERATOR_SPEAKER, text)
+        await self.ledger.append({"kind": "heard", "item_id": item_id, "text": text,
+                                  "failed": False, "origin": "steer"})
+        record = self.log.open_request(
+            request_id, input_item_id=item_id, response_id=item_id, call_id=item_id,
+            interpretation=text, priority="now")
+        op_id = self._next_id("op")
+        payload = {"text": text, "transcript": text, "interpretation": text,
+                   "priority": "now", "origin": "steer"}
+        self.ledger.record_op(op_id, record.request_id, record.revision, "send", payload)
+        receipt = await self.backend.send(text, tag=record.request_id, priority="now",
+                                          transcript=text, interpretation=text)
+        self.ledger.set_outcome(op_id, receipt.outcome, receipt.reason or "")
+        if receipt.outcome == "refused":
+            self.log.refuse_request(record.request_id, receipt.reason or "backend_refused")
+            self.stats.refused += 1
+            self.stats.refusals.append(f"{record.request_id}:{receipt.reason}")
+        else:
+            self.log.mark_dispatched(record.request_id, None)
+            self.stats.dispatched += 1
+        self.changed.set()
+        return receipt
+
     # ------------------------------------------------------------------ call plumbing
 
     async def _answer_call(self, call_id: str, output: dict[str, Any], *,
@@ -495,9 +527,12 @@ class AgentLoop:
         if effect is None:
             if self.broker.terminal_only and transition == "open":
                 # No keyboard surface: the dialog is answered at the terminal, and the operator
-                # must at least hear that the backend is waiting there.
+                # must at least hear that the backend is waiting there. A request the session's
+                # own hooks module reported is said as a request: another hook or the host may
+                # decide it without any dialog.
+                lead = PERMISSION_ASKED if obs.payload.get("source") == "hook" else DIALOG_WAITING
                 await self.voice.announce(
-                    _backend_text(RESULT_PREFIX, "", f"{DIALOG_WAITING}\n{dialog.prompt}"),
+                    _backend_text(RESULT_PREFIX, "", f"{lead}\n{dialog.prompt}"),
                     "narration")
             return
         # Said out loud in our exact words, or it can never gather its delivery evidence.
@@ -864,6 +899,7 @@ def _receipt_words(outcome: str, reason: str | None) -> str:
 
 RESULT_PREFIX = "[后台]"
 DIALOG_WAITING = "backend 在终端里等你确认,语音这边不能替你按键;请到终端回答:"
+PERMISSION_ASKED = "backend 发起了权限请求,语音这边不能替你答应:"
 PROGRESS_PREFIX = "[后台·进行中]"
 TYPED_PREFIX = "[终端·你打的]"
 # The voice's own state, as words the model reacts to in its own words.

@@ -13,7 +13,8 @@ snapshot after every phase change; `status` reads it. Its field names are a CONT
 any reader — `phase`, `pid`, `at`, `started_at`, `ended.reason`, `ended.ended_at`, `relay`,
 `mode`, `last_receipt.state`, `audio_ready`, `asleep`, `instance`,
 `session.{id,name,cwd}`, and the provider relay's `relay_count` and `reconnecting` (the phase
-stays `running` through a relay: only the voice provider's session is renewed).
+stays `running` through a relay: only the voice provider's session is renewed). While the phase
+is `running`, `at` is refreshed every STATUS_HEARTBEAT_S, so a stale `at` means a dead writer.
 
 **Secrets are never printed.** The start-up check asserts that credential env NAMES are
 present and says which are missing; it never echoes a value, and `voice.config.redact_text`
@@ -24,6 +25,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import signal
 import sys
@@ -97,6 +99,15 @@ ROLLOVER_MINUTES_NAME = "VOICE_SESSION_ROLLOVER_MINUTES"
 # gap. A SIZE (~30 s of 20 ms blocks), not a wait: past it the oldest blocks go first.
 MIC_GAP_BLOCKS = 1500
 ROLLOVER_MINUTES_DEFAULT = "55"
+# One permission prompt, two witnesses on an Orca call: the pane reads it off the screen and the
+# plugin's hooks module reports it (permission.json). Whichever speaks second within this many
+# seconds of the first stays quiet, so the operator hears the prompt once. Nothing is approved,
+# refused or delayed by it; it only decides whether the same notice is said twice.
+DIALOG_ECHO_S = 5.0
+# The status heartbeat: while the call runs, `at` in status.json is rewritten this often, so a
+# reader can tell a live call from a status a killed process left behind (the plugin's hooks
+# module takes a call as live only while `at` is under 30 s old). A cadence, not a decision.
+STATUS_HEARTBEAT_S = 10.0
 # b3: lifecycle-ports end
 
 
@@ -119,16 +130,19 @@ def state_dir(session_id: str) -> Path:
     return Path(root) / session_id
 
 
-def atomic_write(path: Path, payload: dict[str, Any]) -> None:
+def atomic_write(path: Path, payload: dict[str, Any], *, durable: bool = True) -> None:
     """Replace the status file in one step. A statusline reading a half-written file would
-    print nothing at best and garbage at worst, and it reads on someone else's schedule."""
+    print nothing at best and garbage at worst, and it reads on someone else's schedule.
+    `durable=False` skips the fsync: the rename is still one step for a reader, and a write
+    made on every heard fragment must not wait for the disk."""
     voice_platform.private_dir(path.parent)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".status-", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False)
             handle.flush()
-            os.fsync(handle.fileno())
+            if durable:
+                os.fsync(handle.fileno())
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -163,6 +177,11 @@ class Status:
             "last_receipt": {"state": ""},
             "relay_count": 0,
             "reconnecting": False,
+            # What the plugin's band draws: words heard and not handed over yet, the tags
+            # sent and still waiting in the session's queue, and the last Steer handled.
+            "unsent": {"chars": 0, "preview": ""},
+            "queued": [],
+            "steer": {},
             "ended": {},
             "session": {"id": session_id, "name": session_name, "cwd": session_cwd},
         }
@@ -177,6 +196,13 @@ class Status:
         self.data["ended"] = {"reason": reason, "ended_at": self._now()}
         self.data["at"] = self._now()
         self.publish()
+
+    def show(self, **fields: Any) -> None:
+        """`set` for what the band draws (unsent words, queued tags): it changes while the
+        operator speaks, so it is written without waiting for the disk."""
+        self.data.update(fields)
+        self.data["at"] = self._now()
+        atomic_write(self.path, self.data, durable=False)
 
     def publish(self) -> None:
         atomic_write(self.path, self.data)
@@ -266,6 +292,22 @@ def effect_vocabulary() -> frozenset[str]:
 
 CONTROL_NAME = "control.json"
 CONTROL_COMMANDS = ("stop",)
+# Written atomically by `steer` (the CLI): {"id": <unique>, "at": <epoch seconds>}. Its own
+# file, so a `stop` and a `steer` written close together never overwrite each other.
+STEER_NAME = "steer.json"
+# Quiet context for the voice model after a Steer sent words directly.
+STEER_SENT_NOTE = "操作者按了“立即发送”：刚才听到、还没交出的话已经直接交给 backend,不要再转交这些话。"
+UNSENT_PREVIEW_MAX = 60
+# Written by the plugin's hooks module (plugin/hooks/register.tsx) when Claude makes a permission
+# request in this session while its call is live:
+# {"at": <epoch seconds>, "tool": ..., "summary": ..., "instance": <this call's status instance>}.
+# Read and announced, never answered: approvals stay on the keyboard (DESIGN.md §Consent).
+PERMISSION_NAME = "permission.json"
+# Lengths, not times. A summary longer than PERMISSION_SUMMARY_LIMIT is dropped whole, as the hooks
+# module does; what is kept is masked WHOLE and only then cut to PERMISSION_TEXT_MAX for speech,
+# so a cut can never leave part of a known credential that the masking would not recognise.
+PERMISSION_SUMMARY_LIMIT = 2000
+PERMISSION_TEXT_MAX = 200
 
 
 class ControlWatcher:
@@ -277,16 +319,35 @@ class ControlWatcher:
     awaited by a task; a watch that exposes an fd is handed to `loop.add_reader` directly.
     `open_watch` is injected: a test supplies a fake that fires on demand, which is why no
     test needs a real filesystem event.
+
+    With `on_permission`, the same watcher also reads `permission.json` (see PERMISSION_NAME).
+    That file is the exception to the rule above: the hooks module rewrites it IN PLACE (one
+    inode, truncate and write: measured with Claude Code 2.1.287's `$.fs.write`), which a
+    kqueue watch on the directory never sees. So the file itself is watched too, from the
+    moment it exists, and followed when its inode changes.
     """
 
-    def __init__(self, directory: Path, on_command, *, open_watch=None) -> None:
+    def __init__(self, directory: Path, on_command, *, open_watch=None,
+                 on_permission=None, since: float | None = None,
+                 instance: str | None = None, on_steer=None) -> None:
         self.directory = directory
         self._on_command = on_command
+        self._on_steer = on_steer
+        self._steer_seen: Any = None
         self._open_watch = open_watch or _directory_watch
         self._task: Any = None
         self._watch: Any = None
         self._loop: Any = None
         self._seen_at: float | None = None
+        self._on_permission = on_permission
+        # A report older than this call (its status `started_at`), or naming another status
+        # `instance`, is a previous call's: a hook can finish writing after a new call began.
+        self._since = since
+        self._instance = instance
+        self._permission_seen_at: float | None = None
+        self._file_watch: Any = None
+        self._file_task: Any = None
+        self._file_ino: int | None = None
 
     def start(self, loop: Any) -> None:
         voice_platform.private_dir(self.directory)
@@ -301,6 +362,7 @@ class ControlWatcher:
             self._seen_at = prior.get("at")
         except (OSError, ValueError):
             self._seen_at = None
+        self._steer_seen = self._steer_id()      # one left by an earlier call is history too
         self._watch = self._open_watch(self.directory)
         if self._watch is None:
             # No watch is available on this platform. The CLI still records the command
@@ -311,6 +373,7 @@ class ControlWatcher:
             loop.add_reader(self._watch.fileno(), self._wake)
         else:
             self._task = loop.create_task(self._pump())
+        self._follow_permission()
 
     async def _pump(self) -> None:
         while self._watch is not None:
@@ -321,9 +384,128 @@ class ControlWatcher:
         if self._watch is not None and not drained:
             self._watch.drain()
         command = self.read_command()
-        if command is None:
+        if command is not None:
+            self._loop.create_task(self._on_command(command))
+        steer = self.read_steer()
+        if steer is not None and self._on_steer is not None:
+            self._loop.create_task(self._on_steer(steer))
+        self._check_permission()
+
+    # -- steer.json ----------------------------------------------------------------------
+
+    def _steer_id(self) -> Any:
+        try:
+            data = json.loads((self.directory / STEER_NAME).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        if self._instance is not None and data.get("instance") not in (None, self._instance):
+            return None                  # pressed for another call
+        return data.get("id")
+
+    def read_steer(self) -> str | None:
+        """The id of a Steer press not handled yet, once; None when nothing is new. The id is
+        the de-duplicator: one write can wake the directory watch more than once."""
+        steer = self._steer_id()
+        if not isinstance(steer, str) or not steer or steer == self._steer_seen:
+            return None
+        self._steer_seen = steer
+        return steer
+
+    # -- permission.json ---------------------------------------------------------------
+
+    def _follow_permission(self) -> None:
+        """Watch permission.json itself once it exists; again when its inode changed (the
+        file was deleted and written anew). The directory watch alone sees it appear."""
+        if self._on_permission is None or self._loop is None or self._watch is None:
             return
-        self._loop.create_task(self._on_command(command))
+        path = self.directory / PERMISSION_NAME
+        try:
+            ino = path.stat().st_ino
+        except OSError:
+            return
+        if self._file_watch is not None and ino == self._file_ino:
+            return
+        self._close_file_watch()
+        watch = self._open_watch(path)
+        if watch is None:
+            return
+        self._file_watch, self._file_ino = watch, ino
+        if hasattr(watch, "fileno"):
+            self._loop.add_reader(watch.fileno(), self._permission_wake)
+        else:
+            self._file_task = self._loop.create_task(self._pump_file(watch))
+
+    async def _pump_file(self, watch: Any) -> None:
+        while self._file_watch is watch:
+            await watch.wait()
+            self._permission_wake(drained=True)
+
+    def _permission_wake(self, drained: bool = False) -> None:
+        if self._file_watch is not None and not drained:
+            self._file_watch.drain()
+        self._check_permission()
+
+    def _check_permission(self) -> None:
+        if self._on_permission is None:
+            return
+        # Watch first, then read: a write that lands between the two is either in what is
+        # read now or wakes the file watch again.
+        self._follow_permission()
+        event = self.read_permission()
+        if event is None:
+            return
+        try:
+            self._on_permission(event)
+        except Exception as exc:          # a notice that failed must not end the watch
+            print(f"voice: permission notice failed: {voice_config.redact_text(str(exc))}",
+                  file=sys.stderr)
+
+    def read_permission(self) -> dict[str, Any] | None:
+        """The permission prompt the hooks module reported, once; None when nothing is new.
+
+        `at` is the de-duplicator, as for commands: both watches can fire for one write. A
+        report older than this call, or for another call's instance, is not this call's. A
+        file caught mid-write (it is
+        written in place, not atomically) does not parse and is not marked seen: the rest of
+        that write wakes the file watch and it is read again then.
+        """
+        try:
+            data = json.loads((self.directory / PERMISSION_NAME).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        at, tool, summary = data.get("at"), data.get("tool"), data.get("summary")
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at):
+            return None
+        if not isinstance(tool, str) or not _one_line(tool):
+            return None
+        if self._since is not None and at < self._since:
+            return None
+        if self._instance is not None and data.get("instance") != self._instance:
+            return None
+        if at == self._permission_seen_at:
+            return None
+        self._permission_seen_at = at
+        return {"at": float(at), "tool": _one_line(tool),
+                "summary": _one_line(summary) if isinstance(summary, str) else ""}
+
+    def _close_file_watch(self) -> None:
+        watch, self._file_watch = self._file_watch, None
+        task, self._file_task = self._file_task, None
+        self._file_ino = None
+        if task is not None:
+            task.cancel()
+        if watch is None:
+            return
+        if self._loop is not None and hasattr(watch, "fileno"):
+            try:
+                self._loop.remove_reader(watch.fileno())
+            except Exception:
+                pass
+        watch.close()
 
     def read_command(self) -> str | None:
         """The pending command, or None. A command is consumed ONCE.
@@ -346,6 +528,7 @@ class ControlWatcher:
         return command
 
     def close(self) -> None:
+        self._close_file_watch()
         watch, self._watch = self._watch, None
         task, self._task = self._task, None
         if task is not None:
@@ -358,6 +541,20 @@ class ControlWatcher:
             except Exception:
                 pass
         watch.close()
+
+
+def _one_line(text: str) -> str:
+    """Text from permission.json as one short line for speech. Known credential values are
+    masked on the WHOLE text first; only then are whitespace and control characters collapsed
+    and the line cut at PERMISSION_TEXT_MAX. Longer than PERMISSION_SUMMARY_LIMIT, nothing is
+    kept. It is spoken about, never parsed or run."""
+    def flat(value: str) -> str:
+        return " ".join("".join(c if c.isprintable() else " " for c in value).split())
+
+    if len(flat(text)) > PERMISSION_SUMMARY_LIMIT:
+        return ""
+    line = flat(voice_config.redact_text(text))
+    return line if len(line) <= PERMISSION_TEXT_MAX else line[:PERMISSION_TEXT_MAX - 1] + "…"
 
 
 def _transcript_wake(path: Path) -> Any:
@@ -422,6 +619,34 @@ def find_claude_ancestor(session_id: str, *, ppid=os.getppid,
     return 0
 
 
+def started_by_claude(claude_pid: int, *, ppid=os.getppid, parent_of=None,
+                      name_of=None) -> bool:
+    """Whether Claude itself started this command, as the plugin's hooks module does.
+
+    The module's spawn makes the launcher Claude's own child (measured), or `uvx`'s child when
+    the release runs through uvx. A command a tool call runs has a shell in between, so a
+    script under the session cannot pass for a press of Call by adding `--mod`."""
+    parent_of = parent_of or _parent_of
+    name_of = name_of or _name_of
+    parent = ppid()
+    if not claude_pid or not parent:
+        return False
+    if parent == claude_pid:
+        return True
+    return name_of(parent) in ("uv", "uvx") and parent_of(parent) == claude_pid
+
+
+def _name_of(pid: int) -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(["ps", "-o", "comm=", "-p", str(int(pid))],
+                             capture_output=True, text=True, timeout=PS_PROBE_BOUND_S)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return ""
+    return os.path.basename((out.stdout or "").strip())
+
+
 def _parent_of(pid: int) -> int:
     import subprocess
 
@@ -466,14 +691,17 @@ def build_claude_code_backend(*, binding: dict, session_id: str, ledger: Any,
                               connect_bound_s: float = RELAY_CONNECT_BOUND_S,
                               start_granularity_s: float = PS_START_GRANULARITY_S,
                               ps_bound_s: float = PS_PROBE_BOUND_S,
+                              dialog_echo_s: float = DIALOG_ECHO_S,
                               now=time.time, env: dict | None = None,
                               on_qualified: Any = None) -> Any:
     """Assemble the adapter over a PROVEN binding. Every port comes from this module.
 
-    The five injected ports are the daemon's whole contribution: the relay's connect bound, the
+    The injected ports are the daemon's whole contribution: the relay's connect bound, the
     `ps` probe bound, the `ps` start-time granularity the identity re-check compares against,
-    the pane's read bound (already spent inside `prove_ownership`), and the clock. The components themselves
-    are the backend worker's and are constructed, never reimplemented, here.
+    the pane's read bound (already spent inside `prove_ownership`), the dialog echo window
+    (one permission prompt seen by the pane and by the hooks module is said once), and the
+    clock. The components themselves are the backend worker's and are constructed, never
+    reimplemented, here.
     """
     from voice.backend.claude_code.adapter import ClaudeCodeBackend
     from voice.backend.claude_code.relay import RelayActuator, relay_binding, relay_env
@@ -500,7 +728,8 @@ def build_claude_code_backend(*, binding: dict, session_id: str, ledger: Any,
     # (4,079 observations at one start, measured 2026-09-20) on top of decoding it all.
     tailer.bootstrap()
     return ClaudeCodeBackend(pane=pane, tailer=tailer, relay=relay, binding=bound,
-                            on_qualified=on_qualified, wake=_transcript_wake(Path(transcript)))
+                            on_qualified=on_qualified, wake=_transcript_wake(Path(transcript)),
+                            now=now, echo_s=dialog_echo_s)
 
 
 class VoiceDaemon:
@@ -558,6 +787,8 @@ class VoiceDaemon:
         # The ledger comes FIRST: the relay actuator writes its outbox through it, so a
         # claude_code backend cannot be built before it exists.
         self.ledger = Ledger(str(self.dir / "ledger.jsonl"), effect_vocabulary())
+        self.ledger.on_record = self._on_record
+        self.ledger.now = self.status._now
         try:
             self.backend = build_backend(self.backend_name,
                                          claude_code=self._build_claude_code)
@@ -584,8 +815,84 @@ class VoiceDaemon:
         profile = self.profile
         session = build_session(self.provider, sink=self.sink, connect=self._connect)
         # Every word bound for the provider passes one redaction point, whatever the provider.
-        return (session, profile.build_strategy(session, self.sink),
-                RedactedVoice(profile.build_voice(session)))
+        strategy = profile.build_strategy(session, self.sink)
+        self._watch_feed(session, strategy)
+        return (session, strategy, RedactedVoice(profile.build_voice(session)))
+
+    # ------------------------------------------------------------------ live view
+
+    def _watch_feed(self, session: Any, strategy: Any) -> None:
+        """After every wire event the strategy handled, refresh what the status says is heard
+        and not handed over. Event-driven: no interval reads it."""
+        feed = strategy.feed
+
+        async def watched(event: Any) -> Any:
+            try:
+                return await feed(event)
+            finally:
+                self._publish_unsent(session)
+
+        strategy.feed = watched
+
+    def _publish_unsent(self, session: Any) -> None:
+        words = getattr(session, "unclaimed_words", None)
+        text = words() if callable(words) else ""
+        preview = voice_config.redact_text(text)[-UNSENT_PREVIEW_MAX:]
+        unsent = {"chars": len(text), "preview": preview}
+        if unsent != self.status.data.get("unsent"):
+            self._set_live(unsent=unsent)
+
+    def _on_record(self, record: dict[str, Any]) -> None:
+        """The ledger's observer: keep the list of tags sent and not yet taken by the session."""
+        if record.get("kind") != "observed" or record.get("obs") != "receipt":
+            return
+        tag, disposition = record.get("tag"), record.get("disposition")
+        if not isinstance(tag, str) or not tag:
+            return
+        queued = list(self.status.data.get("queued") or [])
+        if disposition == "queued" and tag not in queued:
+            queued.append(tag)
+        elif disposition in ("absorbed", "consumed", "withdrawn") and tag in queued:
+            queued.remove(tag)
+        else:
+            return
+        self._set_live(queued=queued)
+
+    def _set_live(self, **fields: Any) -> None:
+        if getattr(self, "_shut", False):
+            return
+        try:
+            self.status.show(**fields)
+        except OSError as exc:             # a full disk must not end the call
+            print(f"voice: status write failed: {exc.strerror or exc}", file=sys.stderr)
+
+    async def on_steer(self, steer_id: str) -> None:
+        """The operator pressed Steer: the words heard and not handed over are sent now, by
+        this process, as the operator's own request. No model decides it (asking the voice
+        model to hand over was tried live, 2026-10-04: it answered instead). The words are
+        claimed first, so a later delegation cannot send them a second time. Whatever already
+        waits in the session's queue is the plugin's to bring forward."""
+        if getattr(self, "_shut", False):
+            return
+        claim = getattr(self.session, "claim_unsent", None)
+        text = claim() if callable(claim) else ""
+        if not text:
+            result = "nothing_unsent"
+        else:
+            self._publish_unsent(self.session)
+            try:
+                receipt = await self.loop.operator_request(text)
+                if receipt.outcome == "refused":
+                    result = f"refused:{receipt.reason}"
+                else:
+                    # Not confirmed is said as such, and never sent again.
+                    result = "uncertain" if receipt.outcome == "uncertain" else "sent"
+                if receipt.outcome != "refused":
+                    # Quiet context, so the voice model knows and does not hand it over again.
+                    await self.voice.context(STEER_SENT_NOTE)
+            except Exception as exc:
+                result = f"failed:{type(exc).__name__}"
+        self._set_live(steer={"id": steer_id, "result": result})
 
     def _build_claude_code(self) -> Any:
         """The real Claude Code graph, over a binding this process already proved.
@@ -685,6 +992,16 @@ class VoiceDaemon:
 
     # ------------------------------------------------------------------ host callbacks
 
+    def on_permission(self, event: dict[str, Any]) -> None:
+        """A permission prompt this session's hooks module saw open (permission.json). Said,
+        never answered: no backend has a key-press surface and the broker is terminal-only
+        (DESIGN.md §Consent). A backend that cannot announce one ignores it."""
+        announce = getattr(self.backend, "announce_permission", None)
+        if announce is None or getattr(self, "_shut", False):
+            return
+        self._spawn(announce(tool=event["tool"], summary=event["summary"], at=event["at"]),
+                    "permission notice")
+
     async def on_control(self, command: str) -> None:
         """A command from the CLI -- or from the backend, when the operator asked it by voice
         to stop: there is no spoken control path of its own. On, status, off: nothing else."""
@@ -713,7 +1030,26 @@ class VoiceDaemon:
 
         if self.loop is None:
             self.build()
-        if not self.acquire_audio():
+        try:
+            # A TERM ends the session the same way a control `stop` does — goodbye, tone,
+            # device released — instead of killing it mid-word. Installed before the
+            # microphone and the paid socket open: the plugin ends its child this way, at any
+            # moment.
+            voice_platform.install_signal(
+                asyncio.get_running_loop(), signal.SIGTERM,
+                lambda: self._spawn(self.shutdown("terminated"), "shutdown"))
+        except (NotImplementedError, RuntimeError):
+            pass
+        # The wait for the audio lock runs off the loop, so a TERM or a stop that arrives
+        # meanwhile is handled, and nothing opens behind it: no speaker, microphone or socket.
+        acquired = await asyncio.get_running_loop().run_in_executor(None, self.acquire_audio)
+        if getattr(self, "_shut", False):
+            if self._lock_held:
+                self._lock.release()
+                self._lock_held = False
+            await self.shutdown("terminated")
+            return
+        if not acquired:
             self.status.end("audio busy")
             raise RuntimeError("audio-device busy (another voice surface is active)")
         self.sink.start()
@@ -723,7 +1059,11 @@ class VoiceDaemon:
                                **capture_kwargs)
         self.capture.start()
         self.control = ControlWatcher(self.dir, self.on_control,
-                                      open_watch=self._open_watch)
+                                      open_watch=self._open_watch,
+                                      on_permission=self.on_permission,
+                                      since=self.status.data.get("started_at"),
+                                      instance=self.status.data.get("instance"),
+                                      on_steer=self.on_steer)
         self.control.start(asyncio.get_running_loop())
         self.status.set(audio_ready=True, phase="connecting")
         session = self.session
@@ -741,14 +1081,6 @@ class VoiceDaemon:
             return
         self._mark_leg_opened()
         self.status.set(phase="running", relay="live")
-        try:
-            # A TERM ends the session the same way a control `stop` does — goodbye, tone,
-            # device released — instead of killing it mid-word.
-            voice_platform.install_signal(
-                asyncio.get_running_loop(), signal.SIGTERM,
-                lambda: self._spawn(self.shutdown("terminated"), "shutdown"))
-        except (NotImplementedError, RuntimeError):
-            pass
         qualify = getattr(self.backend, "qualify", None)
         if qualify is not None:
             # The relay refuses every operator send until its self-test frame is receipted.
@@ -778,6 +1110,7 @@ class VoiceDaemon:
         every = rollover_s()
         rollover = asyncio.ensure_future(self._rollover_watch(every)) if every > 0 else None
         self._rollover_task = rollover
+        heartbeat = asyncio.ensure_future(self._heartbeat(STATUS_HEARTBEAT_S))
         cap = session_max_s()
         try:
             if cap <= 0:
@@ -794,9 +1127,30 @@ class VoiceDaemon:
             if not getattr(self, "_shut", False):
                 raise
         finally:
-            for task in (watch, rollover):
+            for task in (watch, rollover, heartbeat):
                 if task is not None:
                     task.cancel()
+
+    async def _heartbeat(self, every: float, wait_for: Any = asyncio.wait_for) -> None:
+        """Rewrite status.json with a fresh `at` every `every` seconds until the ending
+        starts (it stops at once then, on the stop event). Nothing else changes in the file,
+        so the control watcher's wake on this write reads the same control and permission
+        files and dedupes both: no work follows, no loop. `wait_for` is injected for tests."""
+        stopping = self._stopping()
+        while not getattr(self, "_shut", False):
+            try:
+                # b3: lifecycle-ports begin
+                await wait_for(stopping.wait(), every)
+                # b3: lifecycle-ports end
+                return                    # the ending started
+            except asyncio.TimeoutError:
+                pass
+            if getattr(self, "_shut", False):
+                return
+            try:
+                self.status.set()
+            except OSError as exc:        # a full disk must not end the call; the next beat retries
+                print(f"voice: status heartbeat failed: {exc.strerror or exc}", file=sys.stderr)
 
     async def _idle_watch(self, idle: float) -> None:
         """End the session after `idle` seconds in which neither side produced an event,
@@ -1299,6 +1653,7 @@ async def _handshake(session_id: str, args: argparse.Namespace) -> dict[str, Any
     A refusal here leaves the machine as it was found — no audio lock, no audio, no status
     file claiming a call; the session's instance claim taken just before it is released.
     """
+    by_mod = bool(getattr(args, "mod", False))
     if not args.nonce:
         raise RuntimeError(
             "VOICE_BACKEND=claude_code needs --nonce. Run `NONCE=<n> voice-daemon --nonce <n> "
@@ -1313,7 +1668,7 @@ async def _handshake(session_id: str, args: argparse.Namespace) -> dict[str, Any
         raise RuntimeError(
             f"claude_code: {REFUSE_NO_TRANSCRIPT} — no transcript .jsonl for session "
             f"{session_id!r} under the Claude projects directory.")
-    if args.terminal:
+    if args.terminal and not by_mod:
         # An Orca pane: the screen proof, and permission dialogs become observable.
         proof = await prove_ownership(
             nonce=args.nonce, session_id=session_id, terminal=args.terminal,
@@ -1323,15 +1678,25 @@ async def _handshake(session_id: str, args: argparse.Namespace) -> dict[str, Any
         # Any other host (a plain terminal, the Claude desktop app): ancestry + the launch in
         # the session's own transcript. No screen, so no dialogs (DESIGN.md §Backend split).
         from voice.backend.claude_code.pane import (
-            REFUSE_NONCE_UNRECORDABLE, REFUSE_NONCE_USED, ScreenlessPane, bind_without_screen,
-            session_registry)
+            REFUSE_NONCE_UNRECORDABLE, REFUSE_NONCE_USED, ScreenlessPane, bind_from_mod,
+            bind_without_screen, session_registry)
         # Single use, claimed ATOMICALLY: one O_EXCL file per nonce in the 0700 state dir. Two
         # launchers racing on one nonce both may verify; only one creates the claim.
-        binding = bind_without_screen(
-            nonce=args.nonce, session_id=session_id, ancestor_pid=claude_pid,
-            registry=session_registry(claude_pid), transcript=transcript,
-            ps_timeout=PS_PROBE_BOUND_S, start_granularity=PS_START_GRANULARITY_S,
-            now=time.time, env_nonce=os.environ.get("NONCE"))
+        if by_mod:
+            # Started by the plugin's hooks module on the operator's press: no tool call in
+            # the transcript to find (see bind_from_mod).
+            binding = bind_from_mod(
+                nonce=args.nonce, session_id=session_id, ancestor_pid=claude_pid,
+                registry=session_registry(claude_pid),
+                ps_timeout=PS_PROBE_BOUND_S, start_granularity=PS_START_GRANULARITY_S,
+                now=time.time, env_nonce=os.environ.get("NONCE"),
+                spawned=started_by_claude(claude_pid))
+        else:
+            binding = bind_without_screen(
+                nonce=args.nonce, session_id=session_id, ancestor_pid=claude_pid,
+                registry=session_registry(claude_pid), transcript=transcript,
+                ps_timeout=PS_PROBE_BOUND_S, start_granularity=PS_START_GRANULARITY_S,
+                now=time.time, env_nonce=os.environ.get("NONCE"))
         if binding.get("bound"):
             # The nonce shape is validated by bind_without_screen: safe as a file name.
             try:
@@ -1450,6 +1815,11 @@ def cmd_status(args: argparse.Namespace) -> int:
     if data is None:
         print(json.dumps({"phase": "absent", "path": str(path)}))
         return 1
+    unsent = data.get("unsent")
+    if isinstance(unsent, dict):
+        # The words themselves stay in the state directory, for the band. This output is read
+        # by the agent (`/bettercallgpt:status` runs it): words not sent must not reach it here.
+        data["unsent"] = {"chars": unsent.get("chars", 0)}
     print(json.dumps(data, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
 
@@ -1470,6 +1840,22 @@ def _signal(args: argparse.Namespace, phase: str) -> int:
     return 0
 
 
+def cmd_steer(args: argparse.Namespace) -> int:
+    """`steer` from a second process: the operator pressed Steer. Written atomically to its own
+    file; the daemon's directory watch wakes on it (ControlWatcher.read_steer)."""
+    directory = voice_platform.private_dir(state_dir(_session_id(args)))
+    steer_id = uuid.uuid4().hex[:12]
+    # Named for the call that is running now: a press that lands after that call ended (and
+    # another began) is not the new call's.
+    current = Status.read(directory / STATUS_NAME) or {}
+    # b3: lifecycle-ports begin  (a STAMP, not a wait: the id is the de-duplicator)
+    atomic_write(directory / STEER_NAME, {"id": steer_id, "at": time.time(),
+                                             "instance": current.get("instance")})
+    # b3: lifecycle-ports end
+    print(json.dumps({"ok": True, "command": "steer", "id": steer_id}))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="voice-daemon",
                                      description="the voice layer's process")
@@ -1481,11 +1867,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="claude_code only: the value of NONCE= set on this command line")
     parser.add_argument("--terminal", default="",
                         help="claude_code only: the Orca terminal handle to READ")
+    parser.add_argument("--mod", action="store_true",
+                        help="claude_code only: started by the plugin's hooks module on the "
+                             "operator's own press (no tool call in the transcript)")
     parser.add_argument("--status", action="store_true",
                         help="preflight: print provider x backend x platform capabilities, "
                              "refuse an unsupported combination (exit 3), start nothing")
     sub = parser.add_subparsers(dest="command")
-    for name in ("start", "status", "stop", "preflight"):
+    for name in ("start", "status", "stop", "steer", "preflight"):
         sub.add_parser(name)
     return parser
 
@@ -1496,11 +1885,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.status or args.command == "preflight":
         return cmd_preflight(args)
     if args.command is None:
-        parser.error("a command is required (start | status | stop | preflight)")
+        parser.error("a command is required (start | status | stop | steer | preflight)")
     if args.command == "start":
         return cmd_start(args)
     if args.command == "status":
         return cmd_status(args)
+    if args.command == "steer":
+        return cmd_steer(args)
     return _signal(args, args.command)
 
 

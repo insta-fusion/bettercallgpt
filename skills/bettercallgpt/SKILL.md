@@ -34,7 +34,7 @@ audio library.
 ## 2. Platform and config path
 
 ```sh
-uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.1.1 bettercallgpt doctor
+uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.0 bettercallgpt doctor
 ```
 
 It prints JSON and starts nothing; exit code 1 only means "not ready yet" — read the JSON. If
@@ -88,7 +88,7 @@ anything.
 
 ## Optional extras (offer, do not push)
 
-- **Status line (terminal only).** `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.1.1 bettercallgpt statusline`
+- **Status line (terminal only).** `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.0 bettercallgpt statusline`
   prints `🎙 voice` while this session's call is live. If
   `~/.claude/settings.json` has no `statusLine`, offer to set it to that command; if it has
   one, show how to append its output. After an update, the version in it must be updated too.

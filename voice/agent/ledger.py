@@ -36,6 +36,10 @@ class Ledger:
         self.path = Path(path)
         self.effects = effects
         self._lock = threading.Lock()
+        # Called with every record after it is written (the daemon's live status view).
+        self.on_record: Any = None
+        # The owner's clock, injected (this module reads none): set, every record carries `at`.
+        self.now: Any = None
         self._foreign_seq = 0
         self._f = None
         self._ops: dict[str, str] = {}  # op_id → outcome
@@ -177,10 +181,20 @@ class Ledger:
     def _append(self, record: dict[str, Any]) -> None:
         """Append a record and fsync. Known secret values are masked in every string field:
         the ledger records what the terminal and the operator said, and it persists."""
+        # `at` (epoch seconds) is when the record was written: without it nobody can say how
+        # long words waited between being heard, sent and taken. A stamp; nothing reads it back.
+        if self.now is not None and "at" not in record:
+            record = {**record, "at": self.now()}
         line = json.dumps(redact_tree(record))
         self._f.write(line + "\n")
         self._f.flush()
         os.fsync(self._f.fileno())
+        observer = self.on_record
+        if observer is not None:
+            try:
+                observer(record)
+            except Exception:          # a status view that failed must not fail the write
+                pass
 
     def close(self) -> None:
         """Close the ledger file."""

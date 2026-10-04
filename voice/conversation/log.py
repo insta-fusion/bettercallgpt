@@ -128,6 +128,13 @@ class ConversationLog:
         self.revision += 1
         return self.revision
 
+    def retire_candidate(self, item_id: str) -> None:
+        """An input item that was dispatched without a response of its own (the operator's
+        Steer) is no candidate for the next response: left in the pool it would make that
+        response's join ambiguous and refuse the delegation (live, 2026-10-04)."""
+        if item_id in self._uncommitted_candidates:
+            self._uncommitted_candidates.remove(item_id)
+
     def input_item(self, item_id: str) -> InputItem | None:
         return self._items.get(item_id)
 

@@ -253,7 +253,16 @@ def statusline(stdin, environ=os.environ, alive=None) -> str:
             return ""
     except (OSError, ValueError, AttributeError, TypeError, OverflowError):
         return ""
-    return "🎙 voice ↻" if status.get("reconnecting") is True else "🎙 voice"
+    segment = "🎙 voice ↻" if status.get("reconnecting") is True else "🎙 voice"
+    # What the call console's band shows, in short: words heard and not handed over yet, and
+    # spoken messages waiting behind the agent's running turn.
+    unsent = status.get("unsent")
+    if isinstance(unsent, dict) and unsent.get("chars"):
+        segment += " ✎"
+    queued = status.get("queued")
+    if isinstance(queued, list) and queued:
+        segment += f" ⇪{len(queued)}"
+    return segment
 
 
 def _alive(pid) -> bool:

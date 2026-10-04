@@ -39,6 +39,8 @@ from .base import (
 REFUSE_BLANK_SPAN = "blank_span"
 
 # Spoken back on a delegation that carried no words, so the model stops waiting on it.
+# Quiet context when the span is blank because the operator's own Steer already sent it.
+STEERED_SPAN_NOTE = "这些话操作者已经按“立即发送”直接交给 backend 了,不用再送,也不用说明。"
 BLANK_SPAN_NOTE = "这次没听到要交给 backend 的话,没有送出。需要的话直接问操作者一句。"
 
 
@@ -72,8 +74,13 @@ class DelegationStrategy:
         if not text:
             self.refusals.append({"call_id": did, "reason": REFUSE_BLANK_SPAN,
                                   "detail": "no input words before this delegation's cursor"})
-            await self._session.append("commentary", did or None, BLANK_SPAN_NOTE)
+            if getattr(self._session, "steer_claimed", False):
+                self._session.steer_claimed = False
+                await self._session.append("thinking", did or None, STEERED_SPAN_NOTE)
+            else:
+                await self._session.append("commentary", did or None, BLANK_SPAN_NOTE)
             return [TranscriptFailed(input_item_id=span_id, generation=event.generation)]
+        self._session.steer_claimed = False      # words of its own: nothing left to explain
         return [Request(transcript=text, interpretation=text, priority="next",
                         input_item_id=span_id, response_id=did, call_id=did,
                         generation=event.generation)]

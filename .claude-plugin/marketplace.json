@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Always-on, full-duplex voice for your Claude Code session.",
-    "version": "0.1.1"
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "bettercallgpt",
       "description": "Talk to this Claude Code session: /bettercallgpt:on, :off, :status.",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "author": {
         "name": "StoryArcade"
       },

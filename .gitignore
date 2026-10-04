@@ -10,3 +10,6 @@ venv/
 dist/
 build/
 .DS_Store
+# Written by Claude Code when it loads plugin/ from disk (--plugin-dir): editor types
+plugin/tsconfig.json
+plugin/.claude-plugin/types/
