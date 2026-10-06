@@ -80,12 +80,12 @@ readiness check. You do two things yourself:
    A rising tone: you're live.
 
 Better Call GPT is free and MIT; the voice service bills your own account. Prefer to skip the skill?
-It is in the official Claude Code plugin directory: install [uv](https://docs.astral.sh/uv/), type
+It is listed in Anthropic's Claude Code plugin directory (that copy can lag behind GitHub): install [uv](https://docs.astral.sh/uv/), type
 `/plugin install better-call-gpt@anthropic-plugin-directory`, fill `~/.config/bettercallgpt/.env` from
 [`.env.example`](.env.example), then `/bettercallgpt:on`. This repository's own marketplace works too:
 `/plugin marketplace add insta-fusion/bettercallgpt`, then `/plugin install bettercallgpt@bettercallgpt`.
 
-Or pin the release without the skill: `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.2.0"`.
+Or pin the release without the skill: `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.2.1"`.
 
 ## Speakers or headphones? Pick the voice model
 

@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versions follow
 [SemVer](https://semver.org/) with a pre-1.0 caveat: minor bumps may break.
 
+## [0.2.1] - 2026-10-06
+
+### Changed
+- **The Mod runs no shell.** `Call` finds an installed `bettercallgpt` as a file at three fixed paths
+  (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) instead of running `sh -c "command -v"`, and
+  the command it starts is written out in full at the call site: the installed command, or the pinned
+  release through `uvx`; the session id and a fresh nonce are the only values.
+- **The plugin README lists everything the Mod runs, reads, writes and sends,** with the exact
+  commands, the voice-service hosts, the permission hook ("decides nothing") and the one file it writes
+  and its path. A "Get started" section tells directory users the three steps.
+- Directory description: "Voice-call this Claude Code session: Call, Steer and Hang up above the prompt."
+- README: "listed in Anthropic's Claude Code plugin directory" (not "official"); the setup skill links
+  uv's install page instead of a `curl … | sh` line.
+
+### Fixed
+- `/call-icons` accepts only its own four names; inherited names such as `constructor` are refused.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added

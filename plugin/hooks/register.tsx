@@ -23,7 +23,7 @@ import type { CallView } from '../types'
 
 const APP = 'bettercallgpt'
 // The release this plugin starts when no `bettercallgpt` is installed on PATH.
-const RELEASE = 'git+https://github.com/insta-fusion/bettercallgpt@v0.2.0'
+const RELEASE = 'git+https://github.com/insta-fusion/bettercallgpt@v0.2.1'
 const TICK_MS = 500
 // With no call, status.json is read every IDLE_TICKS ticks (a call started with
 // /bettercallgpt:on shows up within two seconds).
@@ -80,7 +80,8 @@ type LiveCall = { dir: string; instance: string; status: Status }
 
 // This module's own memory. A reload starts it over, and a reload also ends the child.
 let child: Child | undefined
-let command: string[] | undefined
+let command: string | undefined // an installed bettercallgpt that fits, once probed
+let probed = false
 let mainTurn = ''
 let steerWaits = false
 let isStarting = false
@@ -166,28 +167,34 @@ export function failure(stderr: string, code: unknown): string {
   return last.length <= 160 ? last : `${last.slice(0, 159)}…`
 }
 
-/** How the voice process is run: an installed `bettercallgpt` that knows the console's
- * commands (a checkout installed for development), otherwise the pinned release through uvx. */
-async function launcher($: EngineInterface): Promise<string[]> {
-  if (command !== undefined) return command
-  // An installed command from before the call console knows neither `--mod` nor `steer`.
-  const fits = (bin: string) =>
-    $.process
-      .run([bin, '--help'], { timeoutMs: PROBE_BOUND_MS })
+/** Where `uv tool install` and Homebrew put an installed `bettercallgpt`. Checked as files, in
+ * this order; no shell and no PATH search is run to find the command. */
+const INSTALLED_AT = ['.local/bin/bettercallgpt', '/opt/homebrew/bin/bettercallgpt', '/usr/local/bin/bettercallgpt']
+
+/** An installed `bettercallgpt` that knows the console's commands (a checkout installed for
+ * development), or undefined: then the pinned release runs through `uvx`. */
+async function installed($: EngineInterface): Promise<string | undefined> {
+  if (probed) return command
+  probed = true
+  const home = await $.env.get('HOME')
+  for (const at of INSTALLED_AT) {
+    const path = at.startsWith('/') ? at : `${home ?? ''}/${at}`
+    if (!path.startsWith('/') || !(await $.fs.exists(path).catch(() => false))) continue
+    // One program, by name, with one fixed argument: an installed command from before the call
+    // console knows neither `--mod` nor `steer`, and is passed over for the release.
+    const fits = await $.process
+      .run([path, '--help'], { timeoutMs: PROBE_BOUND_MS })
       .then(result => result.exitCode === 0 && result.stdout.includes('--mod'), () => false)
-  let found = await $.process
-    .run(['/bin/sh', '-c', 'command -v bettercallgpt'])
-    .then(result => (result.exitCode === 0 ? result.stdout.trim() : ''), () => '')
-  if (!found.startsWith('/')) {
-    // A desktop app started from the Dock has a short PATH: look where `uv tool install`
-    // puts the command.
-    const home = await $.env.get('HOME')
-    const local = `${home ?? ''}/.local/bin/bettercallgpt`
-    if (local.startsWith('/') && (await $.fs.exists(local).catch(() => false))) found = local
+    if (fits) command = path
+    break
   }
-  command =
-    found.startsWith('/') && (await fits(found)) ? [found] : ['uvx', '--from', RELEASE, 'bettercallgpt']
   return command
+}
+
+/** The command for `stop` and `steer`: the installed command or the release through uvx. */
+async function voiceCommand($: EngineInterface): Promise<string[]> {
+  const bin = await installed($)
+  return bin !== undefined ? [bin] : ['uvx', '--from', RELEASE, 'bettercallgpt']
 }
 
 /** Read the child's output until it ends; then the call is over, whatever ended it. */
@@ -229,7 +236,13 @@ async function startCall($: EngineInterface): Promise<string> {
     const sessionId = await $.session.id()
     if (!SESSION_ID.test(sessionId)) return 'this session has no usable id'
     const nonce = `mod-${(await $.clock.now()).toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-    const argv = [...(await launcher($)), '--session', sessionId, '--nonce', nonce, '--mod', 'start']
+    // The whole command, as text: the installed command, or the pinned release through uvx.
+    // `sessionId` and `nonce` are the only values; nothing else is read from the environment.
+    const bin = await installed($)
+    const argv =
+      bin !== undefined
+        ? [bin, '--session', sessionId, '--nonce', nonce, '--mod', 'start']
+        : ['uvx', '--from', RELEASE, 'bettercallgpt', '--session', sessionId, '--nonce', nonce, '--mod', 'start']
     const stream = $.process.spawn({ argv, env: { NONCE: nonce } }) as unknown as Child
     child = stream
     await set($, { ...IDLE, phase: 'starting', working: mainTurn !== '', note: '' })
@@ -255,7 +268,7 @@ async function hangUp($: EngineInterface): Promise<string> {
     })
   }
   await $.process
-    .run([...(await launcher($)), '--session', sessionId, 'stop'])
+    .run([...(await voiceCommand($)), '--session', sessionId, 'stop'])
     .catch(() => undefined)
   return 'hanging up'
 }
@@ -285,7 +298,7 @@ async function bringForward($: EngineInterface) {
 
 async function chooseIcons($: EngineInterface, wanted: string): Promise<string> {
   const name = wanted.trim()
-  if (!(name in ICON_SETS)) return `icons: ${icons} (choose keys, nerd, emoji or none)`
+  if (!Object.hasOwn(ICON_SETS, name)) return `icons: ${icons} (choose keys, nerd, emoji or none)`
   icons = name as IconSet
   await $.store.set(ICONS_KEY, icons)
   await update($, call, view => ({ ...view })) // draw the band again
@@ -310,7 +323,7 @@ async function steer($: EngineInterface): Promise<string> {
   // The voice process sends what it heard and has not handed over, itself, as a message that
   // ends Claude's running turn. Its answer comes back in status.json (`steer`).
   await $.process
-    .run([...(await launcher($)), '--session', sessionId, 'steer'])
+    .run([...(await voiceCommand($)), '--session', sessionId, 'steer'])
     .catch(() => undefined)
   await bringForward($)
   return 'steering'
@@ -374,6 +387,9 @@ export const register: Register = on => {
         const summary = summarize(e.tool_name, e.tool_input)
         // `instance` ties the notice to this call: a later call in the same session ignores it.
         const event = { at, tool: e.tool_name, summary, instance: live.instance }
+        // The one file this module writes: <state root>/<session id>/permission.json, read by the
+        // voice process of this call only. The state root is ~/.local/state/bettercallgpt unless
+        // VOICE_LISTEN_STATE_DIR or XDG_STATE_HOME is set (see stateRoot).
         await $.fs.write(`${live.dir}/permission.json`, JSON.stringify(event))
       }
     } catch {
@@ -384,7 +400,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const kept = await $.store.get(ICONS_KEY).catch(() => undefined)
-    if (typeof kept === 'string' && kept in ICON_SETS) icons = kept as IconSet
+    if (typeof kept === 'string' && Object.hasOwn(ICON_SETS, kept)) icons = kept as IconSet
     try {
       await $.command.register({
         name: 'call-icons',

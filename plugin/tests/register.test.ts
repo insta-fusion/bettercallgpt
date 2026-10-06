@@ -203,19 +203,17 @@ describe('the call console', () => {
   const BIN = '/home/u/.local/bin/bettercallgpt'
 
   type Spawned = { argv: readonly string[]; env?: Record<string, string> }
-  /** The host's processes: `command -v`, the launcher's stop and steer, and the voice child,
+  /** The host's processes: the installed command's `--help` probe, stop and steer, and the voice child,
    * which runs until the test ends it (or exits at once with `exit`). */
   function processes(on: On, files: Map<string, string>, options: { exit?: { code: number; stderr: string }; installed?: boolean; old?: boolean } = {}) {
     const runs: string[][] = []
     const spawned: Spawned[] = []
     const aborted: string[] = []
     let end: (() => void) | undefined
+    // An installed command is found as a file at a fixed path, never through a shell.
+    if (options.installed ?? true) files.set(BIN, '')
     on('process.run', ($, e) => {
       runs.push([...e.argv])
-      if (e.argv[0] === '/bin/sh') {
-        const isInstalled = options.installed ?? true
-        return { value: { exitCode: isInstalled ? 0 : 1, stdout: isInstalled ? `${BIN}\n` : '', stderr: '' } }
-      }
       if (e.argv.at(-1) === '--help') {
         // An installed command from before the console lists no --mod.
         return { value: { exitCode: 0, stdout: options.old ? 'usage: start status stop' : 'usage: [--mod] start steer', stderr: '' } }
@@ -308,7 +306,7 @@ describe('the call console', () => {
     expect(spawned[0]?.argv.slice(0, 4)).toEqual([
       'uvx',
       '--from',
-      'git+https://github.com/insta-fusion/bettercallgpt@v0.2.0',
+      'git+https://github.com/insta-fusion/bettercallgpt@v0.2.1',
       'bettercallgpt',
     ])
     end()
@@ -472,4 +470,12 @@ describe('reading the voice process', () => {
     await $.command.run({ command: 'call-icons', args: 'sparkles' })
     expect(store.get('icons')).toBe('none')
   })
+  test('/call-icons takes only its own names, not inherited ones', async ($: Engine, on: On) => {
+    const { store } = world(on, { files: new Map() })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await $.command.run({ command: 'call-icons', args: 'emoji' })
+    await $.command.run({ command: 'call-icons', args: 'constructor' }) // a name every object inherits
+    expect(store.get('icons')).toBe('emoji')
+  })
+
 })
