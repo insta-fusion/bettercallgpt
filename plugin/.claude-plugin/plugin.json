@@ -1,7 +1,7 @@
 {
   "name": "bettercallgpt",
-  "version": "0.2.0",
-  "description": "Talk to this Claude Code session: /bettercallgpt:on, :off, :status.",
+  "version": "0.2.1",
+  "description": "Voice-call this Claude Code session: Call, Steer and Hang up above the prompt. macOS.",
   "author": {
     "name": "StoryArcade"
   },

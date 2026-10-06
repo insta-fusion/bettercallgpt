@@ -236,7 +236,7 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(market["plugins"][0]["source"], "./plugin")
 
     # Every command runs the release this plugin belongs to through uvx: nothing to install.
-    VV = "uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.0 bettercallgpt"
+    VV = "uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.1 bettercallgpt"
     # On, off, status — as in Codex. No mute: the daemon has none.
     COMMANDS = {"on": None, "off": f"{VV} stop", "status": f"{VV} status"}
 
@@ -306,10 +306,15 @@ class PluginTests(unittest.TestCase):
                                      "ui.toast", "store.get", "store.set"})
         # $.process.run is written across lines (`$.process\n.run([`): count it by its argv.
         self.assertEqual(source.count("$.process.spawn("), 1)
-        self.assertEqual(source.count(".run(["), 4)
+        self.assertEqual(source.count(".run(["), 3)   # --help probe, stop, steer
+        # The start command is written out in full twice (installed, or the release through uvx).
         self.assertEqual(sorted(re.findall(r"'--session', sessionId, (?:'--nonce', nonce, '--mod', )?'(\w+)'\]", source)),
-                         ["start", "steer", "stop"])
-        self.assertIn(".run(['/bin/sh', '-c', 'command -v bettercallgpt'])", source)
+                         ["start", "start", "steer", "stop"])
+        # No shell, no PATH search: an installed command is found as a file at fixed paths.
+        self.assertNotIn("/bin/sh", source)
+        self.assertNotIn("command -v", source)
+        self.assertIn("['.local/bin/bettercallgpt', '/opt/homebrew/bin/bettercallgpt', '/usr/local/bin/bettercallgpt']", source)
+        self.assertIn(".run([path, '--help']", source)
         self.assertEqual(source.count("$.turn.abort("), 1)
         # The permission hook hands back exactly what the chain beneath answered.
         hook = source[source.index("on('classic.PermissionRequest'"):source.index("on('session.start'")]
