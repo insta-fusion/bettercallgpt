@@ -14,8 +14,12 @@ All notable changes to this project are documented here. Format follows
 - **The listing says where your words go.** The plugin description and a new README section, "Your
   conversation and privacy", say what is read and sent, to which service and on whose key, that we collect
   nothing, and how long call files stay on your machine. The privacy link points at that section.
-- `/bettercallgpt:on`: a voice-tagged line never carries more weight than the same words typed, and
-  anything risky it asks for is confirmed at the keyboard.
+- `/bettercallgpt:on`: a voice-tagged line is unverified speech: it serves the conversation and the task
+  under way, and anything outside it, or any change to settings, permissions or credentials, is confirmed
+  at the keyboard.
+
+### Fixed
+- A Steer that was waiting when a `/bettercallgpt:on` call ended no longer outlives the call.
 
 ## [0.2.1] - 2026-10-06
 

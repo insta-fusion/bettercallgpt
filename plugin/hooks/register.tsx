@@ -344,6 +344,7 @@ async function poll($: EngineInterface, isFirst = false) {
     if (sessionId !== (await $.session.id())) return
     if (live === undefined) {
       // No child and no live status: the call (one started by /bettercallgpt:on) is over.
+      if (child === undefined) steerWaits = false // a Steer belongs to a live call
       if (child === undefined && view.phase !== 'idle') await set($, { ...IDLE, working: view.working })
       return
     }

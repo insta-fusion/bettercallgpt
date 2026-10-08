@@ -1,7 +1,7 @@
 {
   "name": "bettercallgpt",
   "version": "0.2.2",
-  "description": "Voice-call this Claude Code session on macOS: Call, Steer and Hang up above the prompt. Your speech and Claude's replies go only to the OpenAI or Azure voice service you set up, with your own key. Open source; we collect nothing.",
+  "description": "Voice-call this Claude Code session on macOS: Call, Steer and Hang up above the prompt. During a call, your speech, what you type, Claude's replies and one-line permission summaries (tool, command or file path) go only to the OpenAI or Azure voice service you set up, with your own key. Runs the bettercallgpt voice program (installed, or fetched from GitHub via uv). Open source; we collect nothing.",
   "author": {
     "name": "StoryArcade"
   },
