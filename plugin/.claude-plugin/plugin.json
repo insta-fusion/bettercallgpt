@@ -1,7 +1,7 @@
 {
   "name": "bettercallgpt",
-  "version": "0.2.1",
-  "description": "Voice-call this Claude Code session: Call, Steer and Hang up above the prompt. macOS.",
+  "version": "0.2.2",
+  "description": "Voice-call this Claude Code session on macOS: Call, Steer and Hang up above the prompt. Your speech and Claude's replies go only to the OpenAI or Azure voice service you set up, with your own key. Open source; we collect nothing.",
   "author": {
     "name": "StoryArcade"
   },
@@ -18,6 +18,6 @@
   ],
   "documentationUrl": "https://github.com/insta-fusion/bettercallgpt/blob/main/docs/GUIDE.md",
   "supportUrl": "https://github.com/insta-fusion/bettercallgpt/issues",
-  "privacyPolicyUrl": "https://github.com/insta-fusion/bettercallgpt/blob/main/plugin/README.md#what-it-runs-sends-and-fetches",
+  "privacyPolicyUrl": "https://github.com/insta-fusion/bettercallgpt/blob/main/plugin/README.md#your-conversation-and-privacy",
   "types": "./types/index.d.ts"
 }

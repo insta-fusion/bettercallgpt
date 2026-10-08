@@ -4,6 +4,9 @@ Put this Claude Code session on a full-duplex voice call. You talk while it code
 time, and hear results read back. A spoken "yes" never approves anything: permission prompts stay on
 your keyboard. macOS only.
 
+Open source (MIT). We run no server and collect nothing: the call runs on your own key, with the voice
+provider you choose.
+
 ## Commands
 
 - `/bettercallgpt:on` starts a voice call bound to this session. Claude Code asks you to approve the start.
@@ -39,11 +42,11 @@ three commands; the voice itself is a separate program, `bettercallgpt`, from th
     console, and passes it over otherwise):
     `bettercallgpt --session <session id> --nonce <nonce> --mod start`
   - otherwise the pinned release through uv:
-    `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.1 bettercallgpt --session <session id> --nonce <nonce> --mod start`
+    `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt --session <session id> --nonce <nonce> --mod start`
   - `<session id>` is this Claude Code session's id; `<nonce>` is a fresh single-use token the Mod
     makes for that start. No other value is read into the command.
-- **Hang up** and **Steer** run the same program with the fixed arguments `--session <session id> stop`
-  and `--session <session id> steer`.
+- **Hang up** and **Steer** run the same program, written out the same two ways, with the fixed
+  arguments `--session <session id> stop` and `--session <session id> steer`.
 - Your press is the consent: no model turn runs and no permission prompt is shown. The voice process
   refuses this kind of start unless Claude Code itself spawned it.
 
@@ -58,6 +61,22 @@ three commands; the voice itself is a separate program, `bettercallgpt`, from th
   service too. Nothing goes anywhere else, and nothing is sent when no call is running.
 - **Fetches:** the tagged release from GitHub, on first use, through uv.
 
+### Your conversation and privacy
+
+- **What is read:** at **Call**, the voice process reads this session's transcript once, on your
+  machine, only to learn where the session stands (whether Claude is working, whether a message is
+  waiting). None of that earlier history is sent. After that it follows only what is written in this
+  session during the call.
+- **What is sent:** Claude's reply text, anything you type during the call, your speech, and the
+  one-line permission summaries above. Tool output and files are not forwarded.
+- **Where and on whose account:** only to the voice service you configured, with your own key and under
+  your own account with that provider. Its retention is set by your agreement with that provider.
+- **What we collect:** nothing. There is no server of ours, no analytics and no telemetry.
+- **What stays on your machine:** the voice process's call files (the ledger and status files described
+  below), in a directory only you can open. They are not deleted automatically; delete
+  `~/.local/state/bettercallgpt` to remove them.
+- **When it stops:** at **Hang up**, `/bettercallgpt:off`, `/clear`, or when the session closes.
+
 ### What the Mod reads
 
 - The environment variables `HOME`, `XDG_STATE_HOME` and `VOICE_LISTEN_STATE_DIR`, to find the state
@@ -66,6 +85,9 @@ three commands; the voice itself is a separate program, `bettercallgpt`, from th
   During a call that file holds the last 60 characters you said that are not sent yet (credentials
   masked), which the call row shows.
 - This session's id, to name that directory. The Mod reads no transcript and no other file.
+- While a **Steer** waits during a call, each prompt Claude takes is checked for the call's voice tag, so
+  the row knows your spoken message arrived. At any other time the Mod does not look at prompts. Nothing
+  from a prompt is stored or sent.
 - Its own symbol choice (`/call-icons`), from the plugin's store.
 
 The **voice process** reads your key from `~/.config/bettercallgpt/.env` (you fill it yourself; setup

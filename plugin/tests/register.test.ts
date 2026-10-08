@@ -306,7 +306,7 @@ describe('the call console', () => {
     expect(spawned[0]?.argv.slice(0, 4)).toEqual([
       'uvx',
       '--from',
-      'git+https://github.com/insta-fusion/bettercallgpt@v0.2.1',
+      'git+https://github.com/insta-fusion/bettercallgpt@v0.2.2',
       'bettercallgpt',
     ])
     end()

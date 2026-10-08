@@ -23,7 +23,7 @@ import type { CallView } from '../types'
 
 const APP = 'bettercallgpt'
 // The release this plugin starts when no `bettercallgpt` is installed on PATH.
-const RELEASE = 'git+https://github.com/insta-fusion/bettercallgpt@v0.2.1'
+const RELEASE = 'git+https://github.com/insta-fusion/bettercallgpt@v0.2.2'
 const TICK_MS = 500
 // With no call, status.json is read every IDLE_TICKS ticks (a call started with
 // /bettercallgpt:on shows up within two seconds).
@@ -191,12 +191,6 @@ async function installed($: EngineInterface): Promise<string | undefined> {
   return command
 }
 
-/** The command for `stop` and `steer`: the installed command or the release through uvx. */
-async function voiceCommand($: EngineInterface): Promise<string[]> {
-  const bin = await installed($)
-  return bin !== undefined ? [bin] : ['uvx', '--from', RELEASE, 'bettercallgpt']
-}
-
 /** Read the child's output until it ends; then the call is over, whatever ended it. */
 async function follow($: EngineInterface, stream: Child) {
   let stderr = ''
@@ -267,9 +261,13 @@ async function hangUp($: EngineInterface): Promise<string> {
       if (child === ending) void ending.return(undefined)
     })
   }
-  await $.process
-    .run([...(await voiceCommand($)), '--session', sessionId, 'stop'])
-    .catch(() => undefined)
+  // The whole command, as text, like Call's: the installed command or the pinned release.
+  const bin = await installed($)
+  const argv =
+    bin !== undefined
+      ? [bin, '--session', sessionId, 'stop']
+      : ['uvx', '--from', RELEASE, 'bettercallgpt', '--session', sessionId, 'stop']
+  await $.process.run(argv).catch(() => undefined)
   return 'hanging up'
 }
 
@@ -322,9 +320,12 @@ async function steer($: EngineInterface): Promise<string> {
   steerWaits = mainTurn !== ''
   // The voice process sends what it heard and has not handed over, itself, as a message that
   // ends Claude's running turn. Its answer comes back in status.json (`steer`).
-  await $.process
-    .run([...(await voiceCommand($)), '--session', sessionId, 'steer'])
-    .catch(() => undefined)
+  const bin = await installed($)
+  const argv =
+    bin !== undefined
+      ? [bin, '--session', sessionId, 'steer']
+      : ['uvx', '--from', RELEASE, 'bettercallgpt', '--session', sessionId, 'steer']
+  await $.process.run(argv).catch(() => undefined)
   await bringForward($)
   return 'steering'
 }
@@ -455,7 +456,9 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    // A spoken message was just read by Claude: a Steer that was waiting for that is done.
+    // Only while a Steer waits on a live call: otherwise the prompt passes untouched and unread.
+    if (!steerWaits) return next(e)
+    // A spoken message was just read by Claude: the Steer that was waiting for it is done.
     if (e.origin.kind === 'peer' && VOICE_TAG.test(e.text)) steerWaits = false
     return next(e)
   })

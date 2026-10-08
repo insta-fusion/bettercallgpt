@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Always-on, full-duplex voice for your Claude Code session.",
-    "version": "0.2.1"
+    "version": "0.2.2"
   },
   "plugins": [
     {
       "name": "bettercallgpt",
       "description": "Voice-call this Claude Code session: Call, Steer and Hang up above the prompt. macOS.",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "author": {
         "name": "StoryArcade"
       },

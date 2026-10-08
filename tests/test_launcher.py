@@ -236,7 +236,7 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(market["plugins"][0]["source"], "./plugin")
 
     # Every command runs the release this plugin belongs to through uvx: nothing to install.
-    VV = "uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.1 bettercallgpt"
+    VV = "uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt"
     # On, off, status — as in Codex. No mute: the daemon has none.
     COMMANDS = {"on": None, "off": f"{VV} stop", "status": f"{VV} status"}
 
@@ -302,14 +302,18 @@ class PluginTests(unittest.TestCase):
         calls = set(re.findall(r"\$\.([a-z]+\.[a-zA-Z]+)\(", source))
         self.assertLessEqual(calls, {"env.get", "fs.exists", "fs.read", "fs.write", "clock.now",
                                      "clock.every", "clock.after", "session.id", "ui.resolve",
-                                     "command.register", "process.spawn", "turn.abort",
+                                     "command.register", "process.spawn", "process.run", "turn.abort",
                                      "ui.toast", "store.get", "store.set"})
-        # $.process.run is written across lines (`$.process\n.run([`): count it by its argv.
         self.assertEqual(source.count("$.process.spawn("), 1)
-        self.assertEqual(source.count(".run(["), 3)   # --help probe, stop, steer
-        # The start command is written out in full twice (installed, or the release through uvx).
+        self.assertEqual(source.count(".run(["), 1)   # the --help probe
+        self.assertEqual(source.count("$.process.run(argv)"), 2)   # stop, steer
+        # Every command is written out in full twice (installed, or the release through uvx).
         self.assertEqual(sorted(re.findall(r"'--session', sessionId, (?:'--nonce', nonce, '--mod', )?'(\w+)'\]", source)),
-                         ["start", "start", "steer", "stop"])
+                         ["start", "start", "steer", "steer", "stop", "stop"])
+        self.assertNotIn("voiceCommand", source)
+        # The prompt hook reads nothing unless a Steer waits on a live call.
+        prompt = source[source.index("on('prompt.submit'"):source.index("on('ui.render'")]
+        self.assertLess(prompt.index("if (!steerWaits) return next(e)"), prompt.index("e.text"))
         # No shell, no PATH search: an installed command is found as a file at fixed paths.
         self.assertNotIn("/bin/sh", source)
         self.assertNotIn("command -v", source)

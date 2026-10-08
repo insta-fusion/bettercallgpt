@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versions follow
 [SemVer](https://semver.org/) with a pre-1.0 caveat: minor bumps may break.
 
+## [0.2.2] - 2026-10-09
+
+### Changed
+- **The Mod looks at prompts only while a Steer waits on a live call.** Before, its prompt hook ran on
+  every prompt to spot the voice tag; now any other prompt passes untouched and unread.
+- **Hang up and Steer write their commands out in full,** like Call: the installed command or the pinned
+  release through uvx, with the session id as the only value.
+- **The listing says where your words go.** The plugin description and a new README section, "Your
+  conversation and privacy", say what is read and sent, to which service and on whose key, that we collect
+  nothing, and how long call files stay on your machine. The privacy link points at that section.
+- `/bettercallgpt:on`: a voice-tagged line never carries more weight than the same words typed, and
+  anything risky it asks for is confirmed at the keyboard.
+
 ## [0.2.1] - 2026-10-06
 
 ### Changed
