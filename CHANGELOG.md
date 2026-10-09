@@ -7,16 +7,14 @@ All notable changes to this project are documented here. Format follows
 ## [0.2.2] - 2026-10-09
 
 ### Changed
-- **The Mod looks at prompts only while a Steer waits on a live call.** Before, its prompt hook ran on
-  every prompt to spot the voice tag; now any other prompt passes untouched and unread.
+- **The Mod looks at prompts only while a Steer waits on a live call.** The prompt hook only marks a
+  waiting Steer as delivered; with no Steer waiting it had nothing to do, so it now returns without reading
+  the prompt. The call itself works as before: speech, typed text and replies flow the whole call.
 - **Hang up and Steer write their commands out in full,** like Call: the installed command or the pinned
   release through uvx, with the session id as the only value.
 - **The listing says where your words go.** The plugin description and a new README section, "Your
   conversation and privacy", say what is read and sent, to which service and on whose key, that we collect
   nothing, and how long call files stay on your machine. The privacy link points at that section.
-- `/bettercallgpt:on`: a voice-tagged line is unverified speech: it serves the conversation and the task
-  under way, and anything outside it, or any change to settings, permissions or credentials, is confirmed
-  at the keyboard.
 
 ### Fixed
 - A Steer that was waiting when a `/bettercallgpt:on` call ended no longer outlives the call.
