@@ -4,6 +4,9 @@ Put this Claude Code session on a full-duplex voice call. You talk while it code
 time, and hear results read back. A spoken "yes" never approves anything: permission prompts stay on
 your keyboard. macOS only.
 
+Open source (MIT). We run no server and collect nothing: the call runs on your own key, with the voice
+provider you choose.
+
 ## Commands
 
 - `/bettercallgpt:on` starts a voice call bound to this session. Claude Code asks you to approve the start.
@@ -11,9 +14,10 @@ your keyboard. macOS only.
 - `/bettercallgpt:off` ends the call.
 
 On Claude Code 2.1.287+ (CLI and the desktop Code tab) a row above the prompt does the same with one
-press: **Call**, **Steer** (send what you just said now; Claude's running turn makes way; unsent words
+press: **Call**, **Mute** (the voice service hears silence until you press **Unmute**; the band shows
+MUTED while it lasts), **Steer** (send what you just said now; Claude's running turn makes way; unsent words
 exist only on the GPT-Live voice, on Voice Live Steer brings a waiting message forward) and
-**Hang up** (`/clear` and closing the session end the call too). `/call`, `/steer` and `/hangup` are the same actions; `/call-icons` picks the symbols.
+**Hang up** (`/clear` and closing the session end the call too). `/call`, `/mute`, `/steer` and `/hangup` are the same actions; `/call-icons` picks the symbols.
 
 ## Get started
 
@@ -35,17 +39,18 @@ three commands; the voice itself is a separate program, `bettercallgpt`, from th
   with one of these two commands, no shell and no inline script:
   - an installed command, if one is found as a file at `~/.local/bin/bettercallgpt`,
     `/opt/homebrew/bin/bettercallgpt` or `/usr/local/bin/bettercallgpt` (checked as files, in that
-    order; the Mod runs it once with the single fixed argument `--help` to see that it knows the
-    console, and passes it over otherwise):
+    order; the first one found is run once with the single fixed argument `--help`, and if it does
+    not know the console the pinned release below is used instead):
     `bettercallgpt --session <session id> --nonce <nonce> --mod start`
   - otherwise the pinned release through uv:
-    `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.1 bettercallgpt --session <session id> --nonce <nonce> --mod start`
+    `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt --session <session id> --nonce <nonce> --mod start`
   - `<session id>` is this Claude Code session's id; `<nonce>` is a fresh single-use token the Mod
     makes for that start. No other value is read into the command.
-- **Hang up** and **Steer** run the same program with the fixed arguments `--session <session id> stop`
-  and `--session <session id> steer`.
+- **Hang up**, **Steer** and **Mute** run the same program, written out the same two ways, with the
+  fixed arguments `--session <session id> stop`, `--session <session id> steer` and
+  `--session <session id> mute` (or `unmute`).
 - Your press is the consent: no model turn runs and no permission prompt is shown. The voice process
-  refuses this kind of start unless Claude Code itself spawned it.
+  (not the Mod) refuses this kind of start unless Claude Code itself spawned it.
 
 ### What leaves your machine, and where
 
@@ -58,14 +63,40 @@ three commands; the voice itself is a separate program, `bettercallgpt`, from th
   service too. Nothing goes anywhere else, and nothing is sent when no call is running.
 - **Fetches:** the tagged release from GitHub, on first use, through uv.
 
+### Your conversation and privacy
+
+- **What is read:** at **Call**, the voice process reads this session's transcript once, on your
+  machine, only to learn where the session stands (whether Claude is working, whether a message is
+  waiting). None of that earlier history is sent. After that it follows only what is written in this
+  session during the call, and this session's terminal pane, to notice permission prompts.
+- **What is sent:** Claude's reply text, anything you type during the call, your speech, and the
+  one-line permission summaries above. Tool output and files are not forwarded.
+- **Where and on whose account:** only to the voice service you configured, with your own key and under
+  your own account with that provider. Its retention is set by your agreement with that provider.
+- **What we collect:** nothing. There is no server of ours, no analytics and no telemetry.
+- **What stays on your machine:** the voice process's call files (the ledger and status files described
+  below) and the Mod's `permission.json` (the last permission summary, which can be a full command),
+  in a directory only you can open. They are not deleted automatically; delete
+  `~/.local/state/bettercallgpt` to remove them.
+- **When it stops:** at **Hang up** or `/bettercallgpt:off`; with the Mod enabled, also at `/clear` or
+  when the session closes.
+
 ### What the Mod reads
 
 - The environment variables `HOME`, `XDG_STATE_HOME` and `VOICE_LISTEN_STATE_DIR`, to find the state
   directory: `~/.local/state/bettercallgpt` unless one of the last two is set.
 - `status.json` in `<state directory>/<session id>/`, every 2 seconds (twice a second during a call).
-  During a call that file holds the last 60 characters you said that are not sent yet (credentials
-  masked), which the call row shows.
-- This session's id, to name that directory. The Mod reads no transcript and no other file.
+  During a call that file holds the last 60 characters you said that are not sent yet (the voice
+  process masks credentials before writing it), which the call row shows.
+- This session's id, to name that directory.
+- During a call, each permission request's tool name and input (the Bash command, file path or MCP
+  tool name), to write the one-line summary below.
+- Whether `bettercallgpt` exists at the three install paths above, and the first one's `--help` output;
+  and the end of the voice process's error output, to show why a call failed to start.
+- Nothing else: no transcript and no other file.
+- Prompts: only while a **Steer** waits during a live call is each prompt Claude takes checked for the
+  call's voice tag, so the row knows your spoken message arrived. With no call, or no Steer waiting,
+  the prompt hook returns at once without reading the prompt. Nothing from a prompt is stored or sent.
 - Its own symbol choice (`/call-icons`), from the plugin's store.
 
 The **voice process** reads your key from `~/.config/bettercallgpt/.env` (you fill it yourself; setup

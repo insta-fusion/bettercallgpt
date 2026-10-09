@@ -4,6 +4,28 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versions follow
 [SemVer](https://semver.org/) with a pre-1.0 caveat: minor bumps may break.
 
+## [0.2.2] - 2026-10-09
+
+### Changed
+- **The Mod looks at prompts only while a Steer waits on a live call.** The prompt hook only marks a
+  waiting Steer as delivered; with no Steer waiting it had nothing to do, so it now returns without reading
+  the prompt. The call itself works as before: speech, typed text and replies flow the whole call.
+- **Hang up and Steer write their commands out in full,** like Call: the installed command or the pinned
+  release through uvx, with the session id as the only value.
+- **The listing says where your words go.** The plugin description and a new README section, "Your
+  conversation and privacy", say what is read and sent, to which service and on whose key, that we collect
+  nothing, and how long call files stay on your machine. The privacy link points at that section.
+
+### Added
+- **Mute** on the call band (and `/mute`): the voice service hears silence in place of your microphone
+  until you press **Unmute**; the call stays live and Claude's replies are still read aloud. The band
+  shows MUTED only once the voice process confirms it, and `bettercallgpt statusline` adds "· muted".
+
+### Fixed
+- The band's controls stop four columns short of its right end, where Claude Code draws its own
+  collapse control (`[-]`): **Hang up** is no longer covered.
+- A Steer that was waiting when a `/bettercallgpt:on` call ended no longer outlives the call.
+
 ## [0.2.1] - 2026-10-06
 
 ### Changed

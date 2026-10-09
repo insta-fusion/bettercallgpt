@@ -22,7 +22,7 @@ checkout does not:
    the keyboard. When the proof does not hold, the start is left as it was (the screenless
    proof). Off with BETTERCALLGPT_ORCA_PANE=0.
 
-Every other command (`status`, `stop` and their flags) is passed to `voice.app.daemon.main`
+Every other command (`status`, `stop`, `steer`, `mute`, `unmute` and their flags) is passed to `voice.app.daemon.main`
 untouched.
 """
 from __future__ import annotations
@@ -254,6 +254,8 @@ def statusline(stdin, environ=os.environ, alive=None) -> str:
     except (OSError, ValueError, AttributeError, TypeError, OverflowError):
         return ""
     segment = "🎙 voice ↻" if status.get("reconnecting") is True else "🎙 voice"
+    if status.get("muted") is True:
+        segment += " · muted"
     # What the call console's band shows, in short: words heard and not handed over yet, and
     # spoken messages waiting behind the agent's running turn.
     unsent = status.get("unsent")

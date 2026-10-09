@@ -1,7 +1,7 @@
 ---
 description: "Start a voice call attached to this session (approvals stay on the keyboard)"
 disable-model-invocation: true
-allowed-tools: Bash(openssl rand -hex 6), Bash(uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.1 bettercallgpt status)
+allowed-tools: Bash(openssl rand -hex 6), Bash(uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt status)
 ---
 
 Start a voice call attached to THIS session, with this fresh token: !`openssl rand -hex 6`
@@ -11,10 +11,10 @@ the token written in both places (`<token>` = the token, unchanged). Do not wrap
 subshell or a script: the daemon proves it belongs to this session from this very tool call.
 
 ```
-NONCE=<token> uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.1 bettercallgpt --nonce <token> start
+NONCE=<token> uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt --nonce <token> start
 ```
 
-Then run `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.1 bettercallgpt status` once and report `phase` and `relay` in one line. A rising tone
+Then run `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt status` once and report `phase` and `relay` in one line. A rising tone
 means the call is live. Right after the start, `absent`, `ended` or `exiting` is not this
 call's result: the first run downloads bettercallgpt, and an earlier call's snapshot stays until
 the new one writes its own — say the call is still starting. A failed start shows up as the

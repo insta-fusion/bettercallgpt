@@ -306,7 +306,7 @@ describe('the call console', () => {
     expect(spawned[0]?.argv.slice(0, 4)).toEqual([
       'uvx',
       '--from',
-      'git+https://github.com/insta-fusion/bettercallgpt@v0.2.1',
+      'git+https://github.com/insta-fusion/bettercallgpt@v0.2.2',
       'bettercallgpt',
     ])
     end()
@@ -415,9 +415,12 @@ describe('the call console', () => {
 
 describe('reading the voice process', () => {
   test('liveFields takes the preview and the queue length, and nothing malformed', () => {
-    expect(liveFields({ unsent: { chars: 3, preview: 'abc' }, queued: ['a', 'b'] })).toEqual({ unsent: 'abc', queued: 2 })
-    expect(liveFields({})).toEqual({ unsent: '', queued: 0 })
-    expect(liveFields({ unsent: 'x', queued: 'y' })).toEqual({ unsent: '', queued: 0 })
+    expect(liveFields({ unsent: { chars: 3, preview: 'abc' }, queued: ['a', 'b'] })).toEqual({ unsent: 'abc', queued: 2, muted: false })
+    expect(liveFields({})).toEqual({ unsent: '', queued: 0, muted: false })
+    expect(liveFields({ unsent: 'x', queued: 'y' })).toEqual({ unsent: '', queued: 0, muted: false })
+    // Muted only when the voice process wrote exactly true.
+    expect(liveFields({ muted: true }).muted).toBe(true)
+    expect(liveFields({ muted: 'yes' }).muted).toBe(false)
   })
 
   test('failure gives the last line, short, and a plain hint for a session with no message yet', () => {

@@ -5,6 +5,7 @@
 //   queued  how many spoken messages wait in Claude's queue behind the running turn
 //   working whether Claude is in a turn right now
 //   note    one line about the last thing that happened (a failed start, a Steer's result)
+//   muted   the voice process says the microphone is muted (the provider hears silence)
 
 export type CallPhase = 'idle' | 'starting' | 'live' | 'ending'
 
@@ -14,6 +15,7 @@ export type CallView = {
   queued: number
   working: boolean
   note: string
+  muted: boolean
 }
 
 declare module 'claude-code' {

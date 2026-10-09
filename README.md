@@ -85,7 +85,7 @@ It is listed in Anthropic's Claude Code plugin directory (that copy can lag behi
 [`.env.example`](.env.example), then `/bettercallgpt:on`. This repository's own marketplace works too:
 `/plugin marketplace add insta-fusion/bettercallgpt`, then `/plugin install bettercallgpt@bettercallgpt`.
 
-Or pin the release without the skill: `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.2.1"`.
+Or pin the release without the skill: `uv tool install "git+https://github.com/insta-fusion/bettercallgpt@v0.2.2"`.
 
 ## Speakers or headphones? Pick the voice model
 
