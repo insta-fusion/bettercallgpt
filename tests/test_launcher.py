@@ -185,8 +185,9 @@ class StatuslineTests(unittest.TestCase):
         # A provider relay keeps the phase `running`: the segment stays, marked.
         self.assertEqual(self._seg({**self.LIVE, "reconnecting": True}), "🎙 voice ↻")
 
-    def test_there_is_no_muted_segment(self):
-        self.assertEqual(self._seg({**self.LIVE, "muted": True}), "🎙 voice")
+    def test_a_muted_call_says_so(self):
+        self.assertEqual(self._seg({**self.LIVE, "muted": True}), "🎙 voice · muted")
+        self.assertEqual(self._seg({**self.LIVE, "muted": False}), "🎙 voice")
 
     def test_nothing_unless_the_call_is_really_live(self):
         for status in (None, {**self.LIVE, "phase": "built"}, {**self.LIVE, "relay": ""},
@@ -237,7 +238,7 @@ class PluginTests(unittest.TestCase):
 
     # Every command runs the release this plugin belongs to through uvx: nothing to install.
     VV = "uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt"
-    # On, off, status — as in Codex. No mute: the daemon has none.
+    # On, off, status. Mute lives on the band (the Mod), not in a slash command.
     COMMANDS = {"on": None, "off": f"{VV} stop", "status": f"{VV} status"}
 
     def _command(self, name):
@@ -306,10 +307,11 @@ class PluginTests(unittest.TestCase):
                                      "ui.toast", "store.get", "store.set"})
         self.assertEqual(source.count("$.process.spawn("), 1)
         self.assertEqual(source.count(".run(["), 1)   # the --help probe
-        self.assertEqual(source.count("$.process.run(argv)"), 2)   # stop, steer
+        self.assertEqual(source.count("$.process.run(argv)"), 3)   # stop, steer, mute/unmute
         # Every command is written out in full twice (installed, or the release through uvx).
         self.assertEqual(sorted(re.findall(r"'--session', sessionId, (?:'--nonce', nonce, '--mod', )?'(\w+)'\]", source)),
-                         ["start", "start", "steer", "steer", "stop", "stop"])
+                         ["mute", "mute", "start", "start", "steer", "steer", "stop", "stop",
+                          "unmute", "unmute"])
         self.assertNotIn("voiceCommand", source)
         # The prompt hook reads nothing unless a Steer waits on a live call.
         prompt = source[source.index("on('prompt.submit'"):source.index("on('ui.render'")]

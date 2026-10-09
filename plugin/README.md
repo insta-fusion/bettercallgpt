@@ -14,9 +14,10 @@ provider you choose.
 - `/bettercallgpt:off` ends the call.
 
 On Claude Code 2.1.287+ (CLI and the desktop Code tab) a row above the prompt does the same with one
-press: **Call**, **Steer** (send what you just said now; Claude's running turn makes way; unsent words
+press: **Call**, **Mute** (the voice service hears silence until you press **Unmute**; the band shows
+MUTED while it lasts), **Steer** (send what you just said now; Claude's running turn makes way; unsent words
 exist only on the GPT-Live voice, on Voice Live Steer brings a waiting message forward) and
-**Hang up** (`/clear` and closing the session end the call too). `/call`, `/steer` and `/hangup` are the same actions; `/call-icons` picks the symbols.
+**Hang up** (`/clear` and closing the session end the call too). `/call`, `/mute`, `/steer` and `/hangup` are the same actions; `/call-icons` picks the symbols.
 
 ## Get started
 
@@ -45,8 +46,9 @@ three commands; the voice itself is a separate program, `bettercallgpt`, from th
     `uvx --from git+https://github.com/insta-fusion/bettercallgpt@v0.2.2 bettercallgpt --session <session id> --nonce <nonce> --mod start`
   - `<session id>` is this Claude Code session's id; `<nonce>` is a fresh single-use token the Mod
     makes for that start. No other value is read into the command.
-- **Hang up** and **Steer** run the same program, written out the same two ways, with the fixed
-  arguments `--session <session id> stop` and `--session <session id> steer`.
+- **Hang up**, **Steer** and **Mute** run the same program, written out the same two ways, with the
+  fixed arguments `--session <session id> stop`, `--session <session id> steer` and
+  `--session <session id> mute` (or `unmute`).
 - Your press is the consent: no model turn runs and no permission prompt is shown. The voice process
   (not the Mod) refuses this kind of start unless Claude Code itself spawned it.
 

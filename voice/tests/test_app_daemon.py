@@ -433,24 +433,14 @@ class CommandLine(unittest.TestCase):
 
     def test_the_parser_accepts_every_documented_command(self):
         parser = daemon_mod.build_parser()
-        for command in ("start", "status", "stop", "preflight"):
+        for command in ("start", "status", "stop", "steer", "mute", "unmute", "preflight"):
             self.assertEqual(parser.parse_args([command]).command, command)
 
-    def test_there_is_no_operator_mute(self):
-        """On, status, off — as in Codex. A mute the operator forgets is a call that looks
-        live and hears nothing; the provider's own input mute is a wire capability, not this."""
-        import io
-        from contextlib import redirect_stderr
-
-        parser = daemon_mod.build_parser()
-        for command in ("mute", "unmute"):
-            with self.subTest(command=command), redirect_stderr(io.StringIO()), \
-                    self.assertRaises(SystemExit):
-                parser.parse_args([command])
-        self.assertEqual(daemon_mod.CONTROL_COMMANDS, ("stop",))
-        self.assertNotIn("muted", Status(Path(self.tmp.name) / "s.json", session_id="x").data)
-        from voice.audio.io import Capture
-        self.assertFalse(hasattr(Capture, "mute") or hasattr(Capture, "unmute"))
+    def test_mute_is_a_control_command_and_starts_off(self):
+        """The band's Mute: a control command like stop, and status.json says `muted` from the
+        first write, so the band can tell a muted call from a live one."""
+        self.assertEqual(daemon_mod.CONTROL_COMMANDS, ("stop", "mute", "unmute"))
+        self.assertIs(Status(Path(self.tmp.name) / "s.json", session_id="x").data["muted"], False)
 
     def test_status_of_an_unknown_session_reports_absent_and_exits_nonzero(self):
         import io
@@ -675,10 +665,21 @@ class ControlChannel(unittest.IsolatedAsyncioTestCase):
         controller = daemon_mod.ControlWatcher(self.dir, None)
         self.assertIsNone(controller.read_command())
 
-    def test_a_mute_left_by_an_older_cli_is_ignored(self):
+    async def test_a_mute_left_by_an_earlier_call_is_history(self):
+        """A new call starts unmuted: a mute written before its watcher started never fires."""
         daemon_mod.atomic_write(self.dir / daemon_mod.CONTROL_NAME,
                                 {"command": "mute", "at": 1.0})
-        self.assertIsNone(daemon_mod.ControlWatcher(self.dir, None).read_command())
+        controller = daemon_mod.ControlWatcher(self.dir, None, open_watch=lambda d: None)
+        controller.start(asyncio.get_running_loop())
+        self.addCleanup(controller.close)
+        self.assertIsNone(controller.read_command())
+
+    def test_a_mute_written_while_running_is_read_once(self):
+        controller = daemon_mod.ControlWatcher(self.dir, None)
+        daemon_mod.atomic_write(self.dir / daemon_mod.CONTROL_NAME,
+                                {"command": "mute", "at": 2.0})
+        self.assertEqual(controller.read_command(), "mute")
+        self.assertIsNone(controller.read_command())
 
     def test_a_corrupt_control_file_is_ignored(self):
         (self.dir / daemon_mod.CONTROL_NAME).write_text("{not json", encoding="utf-8")
@@ -716,8 +717,11 @@ class ControlChannel(unittest.IsolatedAsyncioTestCase):
             daemon.build()
             self.addCleanup(daemon.ledger.close)
             daemon.capture = mock.Mock(close=lambda: None)
-            await daemon.on_control("mute")                # not a command: nothing happens
+            await daemon.on_control("mute")                # the call stays; it is marked
             self.assertNotEqual(Status.read(self.dir / "status.json")["phase"], "ended")
+            self.assertIs(Status.read(self.dir / "status.json")["muted"], True)
+            await daemon.on_control("unmute")
+            self.assertIs(Status.read(self.dir / "status.json")["muted"], False)
             await daemon.on_control("stop")
         self.assertEqual(Status.read(self.dir / "status.json")["ended"]["reason"],
                          "stopped by control")

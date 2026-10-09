@@ -432,6 +432,19 @@ class TheMicKeepsListeningThroughAReconnect(RelayHarness):
         first.close_gate.set()
 
 
+class MutedTheProviderHearsSilence(RelayHarness):
+    """The band's Mute: the stream keeps its timing, but not one sample of the operator."""
+
+    async def test_muted_blocks_go_out_as_silence_of_the_same_length(self):
+        await self.daemon._send_audio(b"\x05\x00")
+        await self.daemon.on_control("mute")
+        await self.daemon._send_audio(b"\x06\x01\x02\x03")
+        await self.daemon.on_control("unmute")
+        await self.daemon._send_audio(b"\x07\x00")
+        await _until(lambda: len(_mic(self.sock)) >= 3)
+        self.assertEqual(_mic(self.sock)[-3:], [b"\x05\x00", b"\x00\x00\x00\x00", b"\x07\x00"])
+
+
 class TheSwapIsCommittedWhereQuietWasSeen(RelayHarness):
     """div #4: the last quiet check ran in a child task and the parent yielded (cancel +
     gather) before the swap; an operator word in that window was swapped over."""

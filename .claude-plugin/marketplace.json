@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "bettercallgpt",
-      "description": "Voice-call this Claude Code session: Call, Steer and Hang up above the prompt. macOS.",
+      "description": "Voice-call this Claude Code session: Call, Mute, Steer and Hang up above the prompt. macOS.",
       "version": "0.2.2",
       "author": {
         "name": "StoryArcade"

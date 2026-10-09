@@ -54,6 +54,9 @@ const END = 'red'
 const INK = 'black'
 // Below this many columns the words heard and not sent get a row of their own.
 const NARROW = 80
+// The engine draws the band's own collapse control (`[-]`) over its right end: each row of
+// controls stops this many columns short of it.
+const COLLAPSE_COLUMNS = 4
 
 // The symbols on the controls, chosen with /call-icons and kept in this plugin's store.
 // `keys` (the default) and `nerd` draw each symbol as a small colored key before its button:
@@ -62,15 +65,24 @@ const NARROW = 80
 // the labels; `none` is words only.
 export const ICON_SETS = {
   // Steer keeps the wheel emoji in its label: no plain character reads as a steering wheel.
-  keys: { call: '☎', steer: '🛞 ', hangup: '☎', live: '● ' },
-  nerd: { call: '\uf095', steer: '\u{f04d4}', hangup: '\u{f03fa}', live: '\u{f036c} ' },
-  emoji: { call: '📞 ', steer: '🛞 ', hangup: '📴 ', live: '🎙 ' },
-  none: { call: '', steer: '', hangup: '', live: '● ' },
+  // Mute and Unmute carry their symbol in the label, as Steer does; `muted` heads the pill.
+  keys: { call: '☎', steer: '🛞 ', hangup: '☎', live: '● ', mute: '🔇 ', unmute: '🎙 ', muted: '○ ' },
+  nerd: {
+    call: '\uf095',
+    steer: '\u{f04d4}',
+    hangup: '\u{f03fa}',
+    live: '\u{f036c} ',
+    mute: '\u{f036d} ',
+    unmute: '\u{f036c} ',
+    muted: '\u{f036d} ',
+  },
+  emoji: { call: '📞 ', steer: '🛞 ', hangup: '📴 ', live: '🎙 ', mute: '🔇 ', unmute: '🎙 ', muted: '🔇 ' },
+  none: { call: '', steer: '', hangup: '', live: '● ', mute: '', unmute: '', muted: '○ ' },
 } as const
 export type IconSet = keyof typeof ICON_SETS
 const ICONS_KEY = 'icons'
 
-export const IDLE: CallView = { phase: 'idle', unsent: '', queued: 0, working: false, note: '' }
+export const IDLE: CallView = { phase: 'idle', unsent: '', queued: 0, working: false, note: '', muted: false }
 
 const call = atom({ plugin: 'bettercallgpt', key: 'call' } as const, IDLE)
 
@@ -149,12 +161,13 @@ export function summarize(tool: string, input: unknown): string {
 }
 
 /** What status.json says the band should show. */
-export function liveFields(status: Status): Pick<CallView, 'unsent' | 'queued'> {
+export function liveFields(status: Status): Pick<CallView, 'unsent' | 'queued' | 'muted'> {
   const unsent = status.unsent
   const preview =
     typeof unsent === 'object' && unsent !== null ? (unsent as Status).preview : undefined
   const queued = Array.isArray(status.queued) ? status.queued.length : 0
-  return { unsent: typeof preview === 'string' ? preview : '', queued }
+  // Muted only on the voice process's word: the band never says muted while the mic is heard.
+  return { unsent: typeof preview === 'string' ? preview : '', queued, muted: status.muted === true }
 }
 
 /** The last line of what a failed start wrote, as one short note. */
@@ -330,6 +343,28 @@ async function steer($: EngineInterface): Promise<string> {
   return 'steering'
 }
 
+async function toggleMute($: EngineInterface): Promise<string> {
+  const view = await read($, call)
+  if (view.phase !== 'live') return 'no call to mute'
+  const sessionId = await $.session.id()
+  // The band changes when the voice process says so in status.json, not on the press.
+  const bin = await installed($)
+  let argv: string[]
+  if (view.muted) {
+    argv =
+      bin !== undefined
+        ? [bin, '--session', sessionId, 'unmute']
+        : ['uvx', '--from', RELEASE, 'bettercallgpt', '--session', sessionId, 'unmute']
+  } else {
+    argv =
+      bin !== undefined
+        ? [bin, '--session', sessionId, 'mute']
+        : ['uvx', '--from', RELEASE, 'bettercallgpt', '--session', sessionId, 'mute']
+  }
+  await $.process.run(argv).catch(() => undefined)
+  return view.muted ? 'unmuting' : 'muting'
+}
+
 async function poll($: EngineInterface, isFirst = false) {
   if (isPolling) return // one read at a time: a slow one never lands after a newer one
   isPolling = true
@@ -361,11 +396,14 @@ async function poll($: EngineInterface, isFirst = false) {
       steerShown = answerId
     }
     const isSame =
-      view.phase === 'live' && view.unsent === fields.unsent && view.queued === fields.queued
+      view.phase === 'live' &&
+      view.unsent === fields.unsent &&
+      view.queued === fields.queued &&
+      view.muted === fields.muted
     if (!isSame || note !== undefined) {
       // The phase is decided on the view as it is when written: a Hang up pressed while this
       // read was out stays "ending".
-      await update($, call, now => ({
+      await update($, call, (now): CallView => ({
         ...now,
         ...fields,
         phase: now.phase === 'ending' ? 'ending' : 'live',
@@ -417,6 +455,11 @@ export const register: Register = on => {
       })
       await $.command.register({ name: 'hangup', description: 'End the voice call', immediate: true })
       await $.command.register({
+        name: 'mute',
+        description: 'Mute or unmute your microphone on the voice call',
+        immediate: true,
+      })
+      await $.command.register({
         name: 'steer',
         description: 'Have Claude take what you just said now',
         immediate: true,
@@ -439,6 +482,7 @@ export const register: Register = on => {
   on('command.run', { command: 'call-icons' }, async ($, e) => ({ text: await chooseIcons($, e.args) }))
   on('command.run', { command: 'hangup' }, async $ => ({ text: await hangUp($) }))
   on('command.run', { command: 'steer' }, async $ => ({ text: await steer($) }))
+  on('command.run', { command: 'mute' }, async $ => ({ text: await toggleMute($) }))
 
   on('turn.start', async ($, e, next) => {
     mainTurn = e.turnId
@@ -499,7 +543,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           {below}
-          <Box gap={1}>
+          <Box gap={1} paddingRight={COLLAPSE_COLUMNS}>
             {hasFailed ? pill(' ✕ CALL FAILED ', END) : null}
             {tint(icon.call, LIVE)}
             <Button
@@ -525,7 +569,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column">
           {below}
-          <Box gap={1}>
+          <Box gap={1} paddingRight={COLLAPSE_COLUMNS}>
             {pill(view.phase === 'starting' ? ' ◌ CONNECTING ' : ' ◌ HANGING UP ', WARN)}
             <Text dimColor wrap="truncate-end">
               {view.phase === 'starting' ? 'opening the microphone and the voice…' : 'saying goodbye…'}
@@ -548,10 +592,12 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {below}
-        <Box gap={1}>
-          {pill(` ${icon.live}LIVE `, LIVE)}
+        <Box gap={1} paddingRight={COLLAPSE_COLUMNS}>
+          {view.muted ? pill(` ${icon.muted}MUTED `, WARN) : pill(` ${icon.live}LIVE `, LIVE)}
           <Box flexGrow={1} flexShrink={1} gap={1} overflow="hidden">
-            {canSteer ? null : <Text dimColor>{view.note === '' ? 'listening' : view.note}</Text>}
+            {canSteer ? null : (
+              <Text dimColor>{view.note !== '' ? view.note : view.muted ? 'muted · Claude does not hear you' : 'listening'}</Text>
+            )}
             {isNarrow ? null : quote}
             {view.queued === 0 ? null : (
               <Text color={QUEUE} bold>
@@ -561,6 +607,13 @@ export const register: Register = on => {
             {canSteer && view.note !== '' ? <Text dimColor>{view.note}</Text> : null}
           </Box>
           <Box flexShrink={0} gap={1}>
+            <Button
+              key="mute"
+              label={view.muted ? `${icon.unmute}Unmute` : `${icon.mute}Mute`}
+              hotkey="m"
+              variant={view.muted ? 'primary' : 'secondary'}
+              onPress={() => void toggleMute($)}
+            />
             {icons === 'nerd' ? tint(icon.steer, QUEUE) : null}
             <Button
               key="steer"

@@ -16,7 +16,14 @@ All notable changes to this project are documented here. Format follows
   conversation and privacy", say what is read and sent, to which service and on whose key, that we collect
   nothing, and how long call files stay on your machine. The privacy link points at that section.
 
+### Added
+- **Mute** on the call band (and `/mute`): the voice service hears silence in place of your microphone
+  until you press **Unmute**; the call stays live and Claude's replies are still read aloud. The band
+  shows MUTED only once the voice process confirms it, and `bettercallgpt statusline` adds "· muted".
+
 ### Fixed
+- The band's controls stop four columns short of its right end, where Claude Code draws its own
+  collapse control (`[-]`): **Hang up** is no longer covered.
 - A Steer that was waiting when a `/bettercallgpt:on` call ended no longer outlives the call.
 
 ## [0.2.1] - 2026-10-06

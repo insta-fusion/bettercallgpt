@@ -177,6 +177,7 @@ class Status:
             "last_receipt": {"state": ""},
             "relay_count": 0,
             "reconnecting": False,
+            "muted": False,
             # What the plugin's band draws: words heard and not handed over yet, the tags
             # sent and still waiting in the session's queue, and the last Steer handled.
             "unsent": {"chars": 0, "preview": ""},
@@ -291,7 +292,10 @@ def effect_vocabulary() -> frozenset[str]:
 # ---------------------------------------------------------------- control channel
 
 CONTROL_NAME = "control.json"
-CONTROL_COMMANDS = ("stop",)
+# `mute` and `unmute`: the band's Mute button. While muted the microphone still runs and the
+# provider hears silence in its place, so the call stays live; status.json says `muted`, and the
+# band draws it, so a forgotten mute is in plain sight.
+CONTROL_COMMANDS = ("stop", "mute", "unmute")
 # Written atomically by `steer` (the CLI): {"id": <unique>, "at": <epoch seconds>}. Its own
 # file, so a `stop` and a `steer` written close together never overwrite each other.
 STEER_NAME = "steer.json"
@@ -1004,7 +1008,11 @@ class VoiceDaemon:
 
     async def on_control(self, command: str) -> None:
         """A command from the CLI -- or from the backend, when the operator asked it by voice
-        to stop: there is no spoken control path of its own. On, status, off: nothing else."""
+        to stop: there is no spoken control path of its own. Stop, and the band's mute."""
+        if command in ("mute", "unmute"):
+            self._muted = command == "mute"
+            self.status.set(muted=self._muted)
+            return
         if command == "stop":
             self.status.set(phase="exiting")
             await self.shutdown("stopped by control")
@@ -1232,7 +1240,10 @@ class VoiceDaemon:
         its replacement there is none to hear it, so the blocks are HELD, never dropped, and
         the session that takes over gets them first, in order (`_forward_mic`): what the
         operator said in the gap — a barge-in included — still arrives. The call never stops
-        listening."""
+        listening. Muted, the provider hears silence of the same length: the stream keeps its
+        timing and nothing the operator says reaches it."""
+        if getattr(self, "_muted", False):
+            pcm = bytes(len(pcm))
         backlog = self._mic_backlog()
         ended = getattr(self.loop, "leg_ended", None)
         if (getattr(self, "_reconnecting", False) or backlog
@@ -1825,7 +1836,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def _signal(args: argparse.Namespace, phase: str) -> int:
-    """`stop` from a second process.
+    """`stop`, `mute` or `unmute` from a second process.
 
     The running daemon owns the audio device, so a bare CLI cannot flip it directly. It
     writes the command; `ControlWatcher` in the daemon wakes on the directory change and
@@ -1874,7 +1885,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="preflight: print provider x backend x platform capabilities, "
                              "refuse an unsupported combination (exit 3), start nothing")
     sub = parser.add_subparsers(dest="command")
-    for name in ("start", "status", "stop", "steer", "preflight"):
+    for name in ("start", "status", "stop", "steer", "mute", "unmute", "preflight"):
         sub.add_parser(name)
     return parser
 
@@ -1885,7 +1896,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.status or args.command == "preflight":
         return cmd_preflight(args)
     if args.command is None:
-        parser.error("a command is required (start | status | stop | steer | preflight)")
+        parser.error("a command is required (start | status | stop | steer | mute | unmute | preflight)")
     if args.command == "start":
         return cmd_start(args)
     if args.command == "status":
